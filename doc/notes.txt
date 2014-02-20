@@ -1,0 +1,4 @@
+Perhaps use latent semantic analysis on the govdocs? 
+Some sort of tf-idf?
+
+How to best normalize prop and val further (so no values are duplicated in the db)

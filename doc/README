@@ -1,0 +1,11 @@
+This is a collection of files and scripts which will hopefully result in a Government Documents Repository.\
+At the time of this writing, 2014-02-17, there isn't much.
+
+Run traject thusly:
+    $ bundle exec traject -c path_to_conf_file path_to_marc_file > path_to_desired_output_file
+
+Then run some more code to parse that output and insert into database.
+
+Then run some more code to create some clusters.
+
+Then fix a web interface for starting further cluster running and/or manual clustering.
