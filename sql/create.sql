@@ -1,10 +1,12 @@
 use mwarin_ht;
 
+select "dropping indexes" as what_is_happening;
 -- Will cause a warning on a clean db.
 drop index gd_prop_prop on gd_prop;
 drop index gd_prop_val  on gd_prop;
 drop index gd_str_str   on gd_str;
 
+select "dropping tables" as what_is_happening;
 -- Putting the drops in reverse order so they can be dropped.
 drop table if exists gd_item_cluster;
 drop table if exists gd_prop;
@@ -12,6 +14,7 @@ drop table if exists gd_str;
 drop table if exists gd_cluster;
 drop table if exists gd_item;
 
+select "creating tables" as what_is_happening;
 -- Create the tables.
 create table gd_item (
   gd_item_id INT  not null auto_increment,
@@ -53,14 +56,19 @@ create table gd_item_cluster (
   foreign key (gd_cluster_id) references gd_cluster(gd_cluster_id)
 );
 
+select "creating views" as what_is_happening;
 -- 2 views to make it easier to display actual properties and values.
-
 create or replace view v_gd_prop_str as 
 select distinct gp.prop, gs.str from gd_prop AS gp JOIN gd_str AS gs ON (gp.prop = gs.gd_str_id);
 
 create or replace view v_gd_val_str as 
 select distinct gp.val, gs.str from gd_prop AS gp JOIN gd_str AS gs ON (gp.val = gs.gd_str_id);
 
+-- View that tells you which property-value pairs co-occur.
+create or replace view v_gd_ready_clusters as
+select count(gp.val) as cv, gp.prop, gp.val from gd_prop as gp group by gp.prop, gp.val having cv between 2 and 50;
+
+select "creating indexes" as what_is_happening;
 -- Additional indexes.
 create index gd_prop_prop on gd_prop (prop) using btree;
 create index gd_prop_val  on gd_prop (val)  using btree;

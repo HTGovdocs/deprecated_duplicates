@@ -1,4 +1,4 @@
-$LOAD_PATH << './lib/'
+$LOAD_PATH << './../lib/'
 require 'gddb';
 require 'json';
 
@@ -8,6 +8,7 @@ require 'json';
 @insert_prop_q = nil;
 @str_exist_q   = nil;
 @str_insert_q  = nil;
+@max_str_len   = 499;
 
 =begin
 
@@ -49,6 +50,11 @@ WHERE
     gic.gd_cluster_id = 18
     AND
     vp.str = 'Title';
+
+-- Show strings for a property-value pair (mostly for human eyes):
+SELECT 'prop' AS str_type, str FROM v_gd_prop_str WHERE prop = 18 
+UNION 
+SELECT 'val' AS str_type, str FROM v_gd_val_str WHERE val = 2046;
 
 =end
 
@@ -118,9 +124,9 @@ def insert_prop (key, val, gd_item_id)
   key_str_id = get_str_id(key);
   val.each do |v|
     v = v.to_s.strip;
-    if v.length > 500 then
+    if v.length > (@max_str_len + 1) then
       puts "Truncated #{v}";
-      v = v[0..499];
+      v = v[0 .. @max_str_len];
     end
 
     if key == 'agency' then
@@ -130,18 +136,26 @@ def insert_prop (key, val, gd_item_id)
         v.sub!(/for sale by.+$/i, '')
       end
       vnormalized = v.downcase.gsub(/[^a-z]/, '');
-      if vnormalized == 'usgovtprintoff' then
+      if (vnormalized == 'usgovtprintoff' || vnormalized == 'usgpo') then
         puts "Skipping #{v}";
         next;
       end
     end
     v_str_id = get_str_id(v);
+    next if v_str_id.nil?;
     @insert_prop_q.execute(gd_item_id, key_str_id, v_str_id);
   end
 end
 
 def get_str_id (str)
   str_id = nil;
+
+  str.gsub!(/ +/, ' ');
+  str.sub!(/^ /, '');
+  str.sub!(/ $/, '');
+
+  return str_id if str == '';
+
   @str_exist_q.enumerate(str) do |res|
     str_id = res[:gd_str_id];
   end
@@ -164,7 +178,7 @@ if $0 == __FILE__ then
     raise "Need infile that actually exists.";
   end
 
-  setup()
+  setup();
   parse_file(infile);
   shutdown();
 end

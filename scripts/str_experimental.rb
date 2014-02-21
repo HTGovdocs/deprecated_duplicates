@@ -1,4 +1,4 @@
-$LOAD_PATH << './lib/'
+$LOAD_PATH << './../lib/'
 require 'gddb';
 
 db            = Gddb::Db.new();
