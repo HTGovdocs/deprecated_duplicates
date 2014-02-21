@@ -37,15 +37,44 @@ last_id_sql = "SELECT LAST_INSERT_ID() AS id";
   @conn.update(dq);
 end
 
-@get_subvals_sql = "SELECT gp.val, COUNT(gp.val) AS cv FROM #{@schema}.gd_prop AS gp JOIN #{@schema}.v_gd_prop_str AS vp ON (gp.prop = vp.prop) WHERE gp.gd_item_id IN (__?__) AND vp.str = ? GROUP BY gp.val HAVING cv > 1";
+@get_subvals_sql = "SELECT val, COUNT(val) AS cv FROM #{@schema}.gd_prop WHERE gd_item_id IN (__?__) AND prop = ? GROUP BY val HAVING cv > 1";
 
 @get_intersect_items_sql = "SELECT gd_item_id FROM #{@schema}.gd_prop WHERE gd_item_id IN (__?__) AND val = ?";
 
 # Keep prepared statements with lists of bind params of variable length
-@preps = {}; 
+@preps     = {}; 
+
+# If we use this dict of props we don't need to join against gd_str to get human-readable props.
+@prop_dict = {};
+# Assuming it isn't going to be huge and that there will be no overlap between keys and values.
+@conn.query("SELECT prop, str FROM #{@schema}.v_gd_prop_str").each do |row|
+  @prop_dict[row[:prop].to_i] = row[:str];
+  @prop_dict[row[:str]] = row[:prop].to_i;
+end
+puts @prop_dict;
+
 
 # Display a cluster:
-# select gic.gd_cluster_id, gp.gd_item_id, gp.prop, gp.val from gd_item_cluster as gic, gd_prop gp where gic.gd_item_id = gp.gd_item_id and gic.gd_cluster_id = ? order by gic.gd_cluster_id, gp.gd_item_id, prop;
+=begin
+SELECT
+    gic.gd_cluster_id,
+    gp.gd_item_id,
+    gp.prop,
+    vp.str AS propstr,
+    gp.val,
+    vv.str AS valstr
+FROM
+    gd_item_cluster    AS gic
+    JOIN gd_prop       AS gp ON (gic.gd_item_id = gp.gd_item_id)
+    JOIN v_gd_prop_str AS vp ON (gp.prop = vp.prop)
+    JOIN v_gd_val_str  AS vv ON (gp.val = vv.val)
+WHERE
+    gic.gd_cluster_id = ?
+ORDER BY
+    gic.gd_cluster_id,
+    gp.gd_item_id, 
+    gp.prop;
+=end
 
 # Takes a list of ids (at least 2) and creates a cluster for them
 # and assigns them to that cluster.
@@ -55,10 +84,30 @@ def make_cluster (item_id_list)
   @last_id_q.enumerate() do |row|
     gd_cluster_id = row[:id];
   end
-  puts "Making cluster #{gd_cluster_id}";
+  puts "Making cluster #{gd_cluster_id} for items #{item_id_list.join(', ')}";
   item_id_list.each do |item_id|
     @insert_cluster_item_q.execute(item_id, gd_cluster_id);
   end
+end
+
+def find_clusters (prop_names = [])
+  if prop_names.class != [].class then
+    prop_names = [prop_names];
+  end
+  puts "Looking for clusters based on #{prop_names.join(' & ')}";
+  clusters = [];
+  prop_names.each_with_index do |pn,i|
+    puts "Looking for level #{i} clusters based on #{pn} ...";
+    if i == 0 then
+      clusters = same(pn).uniq;
+      puts "got #{clusters.size}";
+    else
+      clusters = intersect(clusters, pn).uniq;
+    end
+    puts "There are now #{clusters.size} clusters based on #{prop_names[0..i].join(' & ')}";
+  end
+
+  return clusters;
 end
 
 # Gets items with the same something.
@@ -66,14 +115,11 @@ end
 # that way we can perform joins / filters on said lists.
 def same (prop_name)
   clusters = [];
-  puts "Finding clusters based on #{prop_name}"
   @get_vals_q.enumerate(prop_name) do |row1|
-    puts "#{prop_name} cluster, #{row1[:cv]} #{row1[:val]}:";
     ids = [];
     @get_by_val_q.enumerate(row1[:prop], row1[:val]) do |row2|
       ids << row2[:gd_item_id];
     end
-    puts ids.join(', ');
     clusters << ids.uniq;
   end
   return clusters; # [[1,5], [3,7,9], ...]
@@ -86,13 +132,12 @@ def intersect (clusters, prop_name)
     # Let's see if there are sub-clusters on prop_name.
     ids = [];
     get_subvals_p = prepare_qmarks(@get_subvals_sql, cluster);
-    get_subvals_p.enumerate(*cluster, prop_name) do |row1|
+    get_subvals_p.enumerate(*cluster, @prop_dict[prop_name]) do |row1|
       get_intersect_items_p = prepare_qmarks(@get_intersect_items_sql, cluster);
       get_intersect_items_p.enumerate(*cluster, row1[:val]) do |row2|
         ids << row2[:gd_item_id];
       end
       if ids.size > 0 then
-        puts "Got #{ids}";
         subclusters << ids.uniq;
       end
     end
@@ -137,7 +182,7 @@ if $0 == __FILE__ then
   #   make_cluster(cluster);
   # end
 
-  intersect(intersect(same('title_series'), 'agency'), 'pub_date').each do |cluster|
+  find_clusters(['title_series', 'agency']).each do |cluster|
     make_cluster(cluster);
   end
 
