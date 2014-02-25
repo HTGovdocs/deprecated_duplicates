@@ -2,3 +2,30 @@ Perhaps use latent semantic analysis on the govdocs?
 Some sort of tf-idf?
 
 How to best normalize prop and val further (so no values are duplicated in the db)
+
+vvv DOES THIS MAKE SENSE? vvv
+
+find_clusters(['title_series', 'agency']).each do |cluster|
+  make_cluster(cluster);
+end
+
+mysql> select count(distinct gd_item_id), count(distinct gd_cluster_id) from gd_item_cluster;
+| count(distinct gd_item_id) | count(distinct gd_cluster_id) |
+|                       1600 |                           816 |
+
+... but:
+
+find_clusters(['title_series', 'agency', 'pub_date']).each do |cluster|
+  make_cluster(cluster);
+end
+
+mysql> select count(distinct gd_item_id), count(distinct gd_cluster_id) from gd_item_cluster;
+| count(distinct gd_item_id) | count(distinct gd_cluster_id) |
+|                       1134 |                           991 |
+
+That is, the more specific the cluster definition the more clusters and the fewer clustered documents.
+The less specific the cluster definition the more clustered documents and the fewer clusters.
+
+... I guess that makes sense.
+
+^^^ DID THAT MAKE SENSE ^^^
