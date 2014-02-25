@@ -92,7 +92,7 @@ def parse_file (infile)
   File.open(infile) do |f|
     f.each_line do |line|
       c += 1;
-      break if c >= 10000;
+      break if c >= 100000;
       if c % 10000 == 0 then
         puts "zzz #{Time.new()}";
         sleep 1;
@@ -150,9 +150,9 @@ end
 def get_str_id (str)
   str_id = nil;
 
-  str.gsub!(/ +/, ' ');
-  str.sub!(/^ /, '');
-  str.sub!(/ $/, '');
+  str = str.gsub(/ +/, ' ');
+  str = str.sub(/^ /, '');
+  str = str.sub(/ $/, '');
 
   return str_id if str == '';
 
