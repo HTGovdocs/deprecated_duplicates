@@ -24,4 +24,6 @@ to_field 'pub_place',       extract_marc("260a",         :trim_punctuation => tr
 to_field 'series_title',    extract_marc("130a:245a:246a:490a:830a", :trim_punctuation => true);
 to_field 'sudoc',           extract_marc("086",          :trim_punctuation => true); # Can remove whitespaces here.
 to_field 'title',           extract_marc("245ab:246ab",  :trim_punctuation => true);
-to_field 'who'              { |rec, acc| cc << 'CIC' };
+to_field 'who' do |rec, acc| 
+  acc << 'CIC' 
+end
