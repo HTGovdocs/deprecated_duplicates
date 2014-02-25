@@ -30,6 +30,7 @@ last_id_sql = "SELECT LAST_INSERT_ID() AS id";
 @last_id_q  = @conn.prepare(last_id_sql);
 
 [
+ "DELETE FROM #{@schema}.gd_cluster_weights", 
  "DELETE FROM #{@schema}.gd_item_cluster", 
  "DELETE FROM #{@schema}.gd_cluster"
 ].each do |dq|
@@ -40,6 +41,9 @@ end
 @get_subvals_sql = "SELECT val, COUNT(val) AS cv FROM #{@schema}.gd_prop WHERE gd_item_id IN (__?__) AND prop = ? GROUP BY val HAVING cv > 1";
 
 @get_intersect_items_sql = "SELECT gd_item_id FROM #{@schema}.gd_prop WHERE gd_item_id IN (__?__) AND val = ?";
+
+insert_weight_sql = "INSERT INTO #{@schema}.gd_cluster_weights (gd_cluster_id, prop, weight) VALUES (?, ?, ?)"
+@insert_weight_q   = @conn.prepare(insert_weight_sql);
 
 # Keep prepared statements with lists of bind params of variable length
 @preps     = {}; 
@@ -76,7 +80,7 @@ ORDER BY
 
 # Takes a list of ids (at least 2) and creates a cluster for them
 # and assigns them to that cluster.
-def make_cluster (item_id_list)
+def make_cluster (item_id_list, prop_names)
   @insert_cluster_q.execute();
   gd_cluster_id = nil;
   @last_id_q.enumerate() do |row|
@@ -85,6 +89,15 @@ def make_cluster (item_id_list)
   puts "Making cluster #{gd_cluster_id} for items #{item_id_list.join(', ')}";
   item_id_list.each do |item_id|
     @insert_cluster_item_q.execute(item_id, gd_cluster_id);
+  end
+
+  make_cluster_weights(gd_cluster_id, prop_names);
+
+end
+
+def make_cluster_weights (gd_cluster_id, prop_names)
+  prop_names.each do |pn|
+    @insert_weight_q.execute(gd_cluster_id, @prop_dict[pn], 2);
   end
 end
 
@@ -105,7 +118,9 @@ def find_clusters (prop_names = [])
     puts "There are now #{clusters.size} clusters based on #{prop_names[0..i].join(' & ')}";
   end
 
-  return clusters;
+  clusters.each do |cluster|
+    make_cluster(cluster, prop_names);
+  end
 end
 
 # Gets items with the same something.
@@ -168,26 +183,13 @@ end
 
 if $0 == __FILE__ then
 
-  find_clusters(['title_series', 'agency']).each do |cluster|
-    make_cluster(cluster);
-  end
 
-  find_clusters(%w{author title published}).each do |cluster|
-    make_cluster(cluster);
-  end  
-
-  find_clusters('lccn').each do |cluster|
-    make_cluster(cluster);
-  end  
-
-  find_clusters('issn').each do |cluster|
-    make_cluster(cluster);
-  end  
-
+  find_clusters(['title_series', 'agency']);
+  find_clusters(%w{author title published});
+  find_clusters('lccn');
+  find_clusters('issn');
   # Is not going to find much until we do data from >1 sources.
-  find_clusters('oclcnum').each do |cluster|
-    make_cluster(cluster);
-  end  
+  find_clusters('oclcnum');
 
   @conn.close();
 end

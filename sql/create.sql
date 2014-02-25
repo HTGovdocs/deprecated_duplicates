@@ -11,6 +11,7 @@ select "dropping tables" as what_is_happening;
 drop table if exists gd_item_cluster;
 drop table if exists gd_prop;
 drop table if exists gd_str;
+drop table if exists gd_cluster_weights;
 drop table if exists gd_cluster;
 drop table if exists gd_item;
 
@@ -24,7 +25,6 @@ create table gd_item (
 
 create table gd_cluster (
   gd_cluster_id INT not null auto_increment,
-  weight        INT default 0,
   primary key (gd_cluster_id)
 );
 
@@ -33,6 +33,15 @@ create table gd_str (
   gd_str_id INT not null auto_increment,
   str          VARCHAR(500) not null,
   primary key (gd_str_id)
+);
+
+create table gd_cluster_weights (
+  gd_cluster_id INT not null,
+  prop 		INT not null,
+  weight        INT default 1,
+  primary key (gd_cluster_id, prop),
+  foreign key (gd_cluster_id) references gd_cluster(gd_cluster_id),
+  foreign key (prop)	      references gd_str(gd_str_id)
 );
 
 -- No longer keeps prop and val as varchars, but as FKs to gd_str:s.
