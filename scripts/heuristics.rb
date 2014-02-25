@@ -53,9 +53,7 @@ end
 end
 puts @prop_dict;
 
-
-# Display a cluster:
-=begin
+=begin # Display a cluster:
 SELECT
     gic.gd_cluster_id,
     gp.gd_item_id,
@@ -69,7 +67,7 @@ FROM
     JOIN v_gd_prop_str AS vp ON (gp.prop = vp.prop)
     JOIN v_gd_val_str  AS vv ON (gp.val = vv.val)
 WHERE
-    gic.gd_cluster_id = ?
+    gic.gd_cluster_id = 0 -- insert id here
 ORDER BY
     gic.gd_cluster_id,
     gp.gd_item_id, 
@@ -169,22 +167,27 @@ def prepare_qmarks (sql, bindparams)
 end
 
 if $0 == __FILE__ then
-  # same('oclcnum').each do |cluster|
-  #   make_cluster(cluster);
-  # end
-  # same('lccn').each do |cluster|
-  #   make_cluster(cluster);
-  # end
-  # same('title').each do |cluster|
-  #   make_cluster(cluster);
-  # end
-  # same('title_series').each do |cluster|
-  #   make_cluster(cluster);
-  # end
 
   find_clusters(['title_series', 'agency']).each do |cluster|
     make_cluster(cluster);
   end
+
+  find_clusters(%w{author title published}).each do |cluster|
+    make_cluster(cluster);
+  end  
+
+  find_clusters('lccn').each do |cluster|
+    make_cluster(cluster);
+  end  
+
+  find_clusters('issn').each do |cluster|
+    make_cluster(cluster);
+  end  
+
+  # Is not going to find much until we do data from >1 sources.
+  find_clusters('oclcnum').each do |cluster|
+    make_cluster(cluster);
+  end  
 
   @conn.close();
 end
