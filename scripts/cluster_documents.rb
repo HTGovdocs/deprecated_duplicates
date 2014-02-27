@@ -159,12 +159,12 @@ def prepare_qmarks (sql, bindparams)
 end
 
 def public_static_void_main
-  find_clusters(%w{title_series agency});
-  find_clusters(%w{author title published});
-  find_clusters('lccn');
+  find_clusters(%w{series_title agency});
+  find_clusters(%w{personal_author title pub_place});
+  find_clusters('sudoc');
   find_clusters('issn');
   # Is not going to find much until we do data from >1 sources.
-  find_clusters('oclcnum');
+  find_clusters('oclc');
 
   @conn.close();
 end
