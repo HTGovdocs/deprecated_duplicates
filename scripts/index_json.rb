@@ -2,7 +2,15 @@ $LOAD_PATH << './../lib/'
 require 'gddb';
 require 'json';
 
+=begin
+
+Takes a list of preprocessed newline-delimited json files, does some
+more processing, and creates records in the database.
+
+=end
+
 @conn          = nil;
+@schema        = 'mwarin_ht';
 @insert_item_q = nil;
 @last_id_q     = nil;
 @insert_prop_q = nil;
@@ -14,18 +22,18 @@ def setup ()
   db    = Gddb::Db.new();
   @conn = db.get_interactive();
 
-  delete_prop_sql = "DELETE FROM mwarin_ht.gd_prop";
-  delete_item_sql = "DELETE FROM mwarin_ht.gd_item";
+  deletes_from_table = %w[gd_cluster_weights gd_item_cluster gd_cluster gd_prop gd_item gd_str];
+  deletes_from_table.each do |tbl|
+    q = "DELETE FROM #{@schema}.#{tbl}";
+    puts q;
+    @conn.update(q);
+  end
+
   insert_item_sql = "INSERT INTO mwarin_ht.gd_item (raw) VALUES (?)";
   last_id_sql     = "SELECT LAST_INSERT_ID() AS id";
   insert_prop_sql = "INSERT INTO mwarin_ht.gd_prop (gd_item_id, prop, val) VALUES (?, ?, ?)";
   str_exist_sql   = "SELECT gd_str_id, str FROM mwarin_ht.gd_str WHERE str = ?";
   str_insert_sql  = "INSERT INTO mwarin_ht.gd_str (str) VALUES (?)";
-
-  puts delete_prop_sql;
-  @conn.update(delete_prop_sql);
-  puts delete_item_sql;
-  @conn.update(delete_item_sql);
 
   # Prepared queries
   @insert_item_q = @conn.prepare(insert_item_sql);
@@ -39,17 +47,20 @@ def shutdown ()
   @conn.close();
 end
 
-def parse_file (infile)
+def index_file (infile)
+  puts "Indexing #{infile}";
   c = 0;
   File.open(infile) do |f|
     f.each_line do |line|
+      # break if c >= 10000;
       c += 1;
-      break if c >= 100000;
       if c % 10000 == 0 then
         puts "zzz #{Time.new()}";
         sleep 1;
       end
-      puts c if c % 100 == 0;
+      if c % 1000 == 0 then
+        puts "#{Time.new()} | #{c} records";
+      end
       line.strip!;
       insert_item(line);
     end
@@ -77,22 +88,21 @@ def insert_prop (key, val, gd_item_id)
   val.each do |v|
     v = v.to_s.strip;
     if v.length > (@max_str_len + 1) then
-      puts "Truncated #{v}";
       v = v[0 .. @max_str_len];
     end
 
+    # Do some scrubbing to normalize agencies
+    # Remove all versions of e.g. "for sale by the Supt. of Docs., U.S. Govt. Print Off"
     if key == 'agency' then
-      # Do some scrubbing to normalize agencies
-      # Remove all versions of e.g. "for sale by the Supt. of Docs., U.S. Govt. Print Off"
       if v =~ /for sale by/i then
         v.sub!(/for sale by.+$/i, '')
       end
       vnormalized = v.downcase.gsub(/[^a-z]/, '');
-      if (vnormalized == 'usgovtprintoff' || vnormalized == 'usgpo') then
-        puts "Skipping #{v}";
+      if (vnormalized == 'usgovtprintoff' || vnormalized == 'usgpo' || vnormalized == 'gpo') then
         next;
       end
     end
+
     v_str_id = get_str_id(v);
     next if v_str_id.nil?;
     @insert_prop_q.execute(gd_item_id, key_str_id, v_str_id);
@@ -122,15 +132,18 @@ def get_str_id (str)
   return str_id.to_i;
 end
 
+# Main:
 if $0 == __FILE__ then
-  infile = ARGV.shift;
-  if infile.nil? then
+  if ARGV.size == 0 then
     raise "Need infile";
-  elsif !File.exists?(infile) then
-    raise "Need infile that actually exists.";
   end
 
   setup();
-  parse_file(infile);
+  ARGV.each do |infile|
+    index_file(infile);
+    if !File.exists?(infile) then
+      raise "Need infile that actually exists.";
+    end
+  end
   shutdown();
 end
