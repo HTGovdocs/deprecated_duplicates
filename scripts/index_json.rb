@@ -17,7 +17,12 @@ more processing, and creates records in the database.
 @str_exist_q   = nil;
 @str_insert_q  = nil;
 @max_str_len   = 499;
+@str_mem       = {};
+@max_str_mem   = 1000;
+@str_mem_hit   = 0;
+@str_mem_miss  = 0;
 @sha_digester  = nil;
+@usgporx       = /usgovtprintoff|govtprintoff|usgpo|gpo/;
 
 def setup ()
   db    = HTPH::Hathidb::Db.new();
@@ -43,7 +48,10 @@ def shutdown ()
   @conn.close();
 end
 
-def clean_tables 
+# Triggered if the commandline args contain the string 'clean'.
+# Performs some DELETEs.
+
+def clean_tables
   deletes_from_table = %w[gd_cluster_weights gd_item_cluster gd_cluster gd_prop gd_item gd_str];
   deletes_from_table.each do |tbl|
    q = "DELETE FROM #{@schema}.#{tbl}";
@@ -52,6 +60,7 @@ def clean_tables
   end
 end
 
+# Reads input file line by line and calls deeper methods.
 def index_file (infile)
   puts "Indexing #{infile}";
   puts "Started #{Time.new()}";
@@ -65,7 +74,7 @@ def index_file (infile)
         sleep 1;
       end
       if c % 1000 == 0 then
-        puts "#{Time.new()} | #{c} records";
+        puts "#{Time.new()} | #{c} records | #{@str_mem_hit} cache hits / #{@str_mem_miss} cache misses";
       end
       line.strip!;
       process_line(line);
@@ -73,6 +82,7 @@ def index_file (infile)
   end
 end
 
+# Finds items in a line and calls deeper methods to insert them into db.
 def process_line (line)
   j = JSON.parse(line);
 
@@ -88,6 +98,7 @@ def process_line (line)
   end
 end
 
+# Inserts an item into the db and calls deeper methods to insert its properties.
 def insert_item (json)
   jstr     = json.to_s;
   sha_hash = @sha_digester.hexdigest(jstr);
@@ -101,6 +112,7 @@ def insert_item (json)
   end
 end
 
+# Inserts a single property into the database. Calls deeper methods to look up str_ids.
 def insert_prop (key, val, gd_item_id)
   if val.class != [].class then
     val = [val];
@@ -119,17 +131,9 @@ def insert_prop (key, val, gd_item_id)
       if v =~ /for sale by/i then
         v.sub!(/for sale by.+$/i, '');
       end
-      vnormalized = v.downcase.gsub(/[^a-z]/, '');
-      if (vnormalized == 'usgovtprintoff' || vnormalized == 'govtprintoff' || vnormalized == 'usgpo' || vnormalized == 'gpo') then
-        next;
-      end
+      vnorm = v.downcase.gsub(/[^a-z]/, '');
+      next if vnorm =~ @usgporx;
     end
-
-    # Should not be needed with Bill's new patch.
-    # if key == 'oclc' then
-    #   # Strip leading alphas and zeroes: ocm00032432 -> 32432
-    #   v.sub!(/^[a-z0]+/, '');
-    # end
 
     v_str_id = get_str_id(v);
     next if v_str_id.nil?;
@@ -137,14 +141,23 @@ def insert_prop (key, val, gd_item_id)
   end
 end
 
+# Takes a string as input and returns a gd_str_id
+# from gd_str. Uses an internal hash to cache the
+# last 1000 seen strings. Inserts in db if not
+# cached and not already in db.
+
 def get_str_id (str)
   str_id = nil;
-
   str = str.gsub(/ +/, ' ');
   str = str.sub(/^ /, '');
   str = str.sub(/ $/, '');
 
   return str_id if str == '';
+  if @str_mem.has_key?(str) then
+    @str_mem_hit += 1;
+    return @str_mem[str];
+  end
+  @str_mem_miss += 1;
 
   @str_exist_q.enumerate(str) do |res|
     str_id = res[:gd_str_id];
@@ -157,10 +170,22 @@ def get_str_id (str)
     end
   end
 
+  if @str_mem.keys.size >= @max_str_mem then
+    # Mem hash is full, make some room, delete 10% of keys.
+    @str_mem.keys[0 .. (@str_mem.keys.size / 10)].each do |k|
+      @str_mem.delete(k);
+    end
+  end
+
+  @str_mem[str] = str_id.to_i;
+
   return str_id.to_i;
 end
 
 # Main:
+# Pass 'clean' as commandline arg to empty the relevant db tables
+# and/or a list of paths to input files full of newlined-delimited
+# json.
 if $0 == __FILE__ then
   if ARGV.size == 0 then
     raise "Need infile";
