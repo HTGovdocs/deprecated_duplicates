@@ -14,6 +14,7 @@ end
 # Want to output empty elements too, for purposes of making a mysql loadfile?
 
 to_field 'agency',          extract_marc("110:260b:710", :trim_punctuation => true);
+to_field 'enum_chron',      extract_marc("974z",         :trim_punctuation => true);
 to_field 'issn',            extract_marc("022",          :trim_punctuation => true);
 to_field 'item_dimensions', extract_marc("300c",         :trim_punctuation => true);
 to_field 'oclc',            oclcnum;

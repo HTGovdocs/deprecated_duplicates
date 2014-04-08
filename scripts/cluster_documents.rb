@@ -1,9 +1,14 @@
-$LOAD_PATH << './../lib/'
-require 'gddb';
+require 'htph';
 
-db    = Gddb::Db.new();
+db    = HTPH::Hathidb::Db.new();
 @conn = db.get_interactive();
 @schema = 'mwarin_ht';
+
+@conn.query("select 1 + 3 as c") do |row|
+  puts row[:c];
+end
+@conn.close();
+exit;
 
 # Assuming a cluster has 2 members or more, but no more than 25.
 min_cluster_size = 2;
@@ -29,15 +34,6 @@ insert_cluster_item_sql = "INSERT IGNORE INTO #{@schema}.gd_item_cluster (gd_ite
 last_id_sql = "SELECT LAST_INSERT_ID() AS id";
 @last_id_q  = @conn.prepare(last_id_sql);
 
-[
- "DELETE FROM #{@schema}.gd_cluster_weights",
- "DELETE FROM #{@schema}.gd_item_cluster",
- "DELETE FROM #{@schema}.gd_cluster"
-].each do |dq|
-  puts dq;
-  @conn.update(dq);
-end
-
 # Not prepared here, but by prepare_qmarks as needed.
 @get_subvals_sql = "SELECT val, COUNT(val) AS cv FROM #{@schema}.gd_prop WHERE gd_item_id IN (__?__) AND prop = ? GROUP BY val HAVING cv > 1";
 @get_intersect_items_sql = "SELECT gd_item_id FROM #{@schema}.gd_prop WHERE gd_item_id IN (__?__) AND val = ?";
@@ -54,6 +50,17 @@ insert_weight_sql = "INSERT INTO #{@schema}.gd_cluster_weights (gd_cluster_id, p
 @conn.query("SELECT prop, str FROM #{@schema}.v_gd_prop_str").each do |row|
   @prop_dict[row[:prop].to_i] = row[:str];
   @prop_dict[row[:str]]       = row[:prop].to_i;
+end
+
+def cleanup 
+  [
+   "DELETE FROM #{@schema}.gd_cluster_weights",
+   "DELETE FROM #{@schema}.gd_item_cluster",
+   "DELETE FROM #{@schema}.gd_cluster"
+  ].each do |dq|
+    puts dq;
+    @conn.update(dq);
+  end
 end
 
 # Takes a list of ids (at least 2) and creates a cluster for them
@@ -94,6 +101,26 @@ def find_clusters (prop_names = [])
     end
     puts "There are now #{clusters.size} clusters based on #{prop_names[0..i].join(' & ')}";
   end
+
+  # Delete all clusters c1 such that there is a cluster c2 which is a proper superset of c1.
+  # Please note that there can still be clusters that are sub/super-sets of other clusters,
+  # but then they will have been clustered using different criteria.
+  puts "Before subset removal there are #{clusters.size} clusters.";
+  clusters.sort!{|x,y| x.size <=> y.size};
+  clusters.each_with_index do |cluster1, i|
+    # Ignore all lower indices. We're sorted by size, so all bigger clusters are ahead.
+    clusters[i .. -1].each do |cluster2|
+      if cluster2.size > cluster1.size then
+        # If all members in c1 are in c2 then c1 - c2 is empty set, yes?
+        if cluster1 - cluster2 == [] then
+          puts "#{cluster1} is a subset of #{cluster2} ... deleting the subset.\n";
+          clusters.delete_at(i);
+          break;
+        end
+      end
+    end
+  end
+  puts "After subset removal there are #{clusters.size} clusters left.";
 
   clusters.each do |cluster|
     make_cluster(cluster, prop_names);
@@ -159,11 +186,11 @@ def prepare_qmarks (sql, bindparams)
 end
 
 def public_static_void_main
+  cleanup();
   find_clusters(%w{series_title agency});
   find_clusters(%w{personal_author title pub_place});
   find_clusters('sudoc');
   find_clusters('issn');
-  # Is not going to find much until we do data from >1 sources.
   find_clusters('oclc');
 
   @conn.close();
