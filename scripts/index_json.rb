@@ -13,7 +13,6 @@ more processing, and creates records in the database.
 @schema        = 'mwarin_ht';
 @insert_item_q = nil;
 @last_id_q     = nil;
-@insert_prop_q = nil;
 @str_exist_q   = nil;
 @str_insert_q  = nil;
 @max_str_len   = 499;
@@ -23,6 +22,7 @@ more processing, and creates records in the database.
 @str_mem_miss  = 0;
 @sha_digester  = nil;
 @usgporx       = /usgovtprintoff|govtprintoff|usgpo|gpo/;
+@hd_prop      = nil;
 
 def setup ()
   db    = HTPH::Hathidb::Db.new();
@@ -30,16 +30,16 @@ def setup ()
 
   insert_item_sql = "INSERT INTO mwarin_ht.gd_item (raw, hashsum) VALUES (?, ?)";
   last_id_sql     = "SELECT LAST_INSERT_ID() AS id";
-  insert_prop_sql = "INSERT INTO mwarin_ht.gd_prop (gd_item_id, prop, val) VALUES (?, ?, ?)";
   str_exist_sql   = "SELECT gd_str_id, str FROM mwarin_ht.gd_str WHERE str = ?";
   str_insert_sql  = "INSERT INTO mwarin_ht.gd_str (str) VALUES (?)";
+  load_props_sql  = "LOAD DATA LOCAL INFILE ? INTO TABLE mwarin_ht.gd_prop (gd_item_id, prop, val)";
 
   # Prepared queries
   @insert_item_q = @conn.prepare(insert_item_sql);
   @last_id_q     = @conn.prepare(last_id_sql);
-  @insert_prop_q = @conn.prepare(insert_prop_sql);
   @str_exist_q   = @conn.prepare(str_exist_sql);
   @str_insert_q  = @conn.prepare(str_insert_sql);
+  @load_props_q  = @conn.prepare(load_props_sql);
 
   @sha_digester  = Digest::SHA256.new();
 end
@@ -63,6 +63,8 @@ end
 # Reads input file line by line and calls deeper methods.
 def index_file (infile)
   puts "Indexing #{infile}";
+  @hd_prop = HTPH::Hathidata::Data.new('prop_infile.tsv').open('w');
+  @hd_prop.file.sync = false; # Turning autoflush on should be faster?
   puts "Started #{Time.new()}";
   c = 0;
   File.open(infile) do |f|
@@ -80,6 +82,12 @@ def index_file (infile)
       process_line(line);
     end
   end
+
+  @hd_prop.close();
+  puts "Loading #{@hd_prop.path}";
+  @load_props_q.execute(@hd_prop.path);
+  @hd_prop.delete();
+  
 end
 
 # Finds items in a line and calls deeper methods to insert them into db.
@@ -137,7 +145,7 @@ def insert_prop (key, val, gd_item_id)
 
     v_str_id = get_str_id(v);
     next if v_str_id.nil?;
-    @insert_prop_q.execute(gd_item_id, key_str_id, v_str_id);
+    @hd_prop.file.puts [gd_item_id, key_str_id, v_str_id].join("\t");
   end
 end
 
