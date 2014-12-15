@@ -1,0 +1,62 @@
+Steps:
+
+1. Download a full hathi file:
+
+# replace YYYYMMDD as appropriate
+cd /htapps/mwarin.babel/gdweb_script/data/;
+wget "http://www.hathitrust.org/sites/www.hathitrust.org/files/hathifiles/hathi_full_YYYYMMDD.txt.gz" 
+
+
+2. Run get_it_out on selected hathifile:
+
+# replace YYYYMMDD as appropriate
+cd /htapps/mwarin.babel/gdweb_script;
+bundle exec ruby scripts/get_it_out.rb hathi_full_YYYYMMDD.txt
+
+
+3. Index (put in db tables). Requires username and password, so cannot be nohupped. Takes a few hours.
+
+cd /htapps/mwarin.babel/gdweb_script;
+bundle exec ruby scripts/index_hathi.rb
+
+
+4. Add sudocs. Fairly quick. ~20 minutes.
+
+# Load into table:
+cd /htapps/mwarin.babel/gdweb_script;
+bundle exec ruby scripts/load_hathi_sudocs.rb
+
+Might want to get fresher htid-sudoc pairs. The ones I use are from Bill's sqlite db,
+and extracted by extract_htid_sudoc.rb
+
+
+5. Perform oclc resolution. Requires username and password, so cannot be nohupped. Fairly quick... ~5 minutes.
+Could be rewritten so it doesn't use a tmp table, and would not need to ger username/password.
+
+cd /htapps/mwarin.babel/gdweb_script;
+bundle exec ruby scripts/bulk_oclc_resolutioner.rb
+
+
+6. Get list of duplicates, related & unclear. Takes a couple of minutes.
+
+cd /htapps/mwarin.babel/gdweb_script
+bundle exec ruby scripts/duplicate_detection.rb
+
+
+7. Get sudoc stem to agency mapping:
+
+cd /htapps/mwarin.babel/gdweb_script
+bundle exec ruby scripts/sudoc_agency_map.rb hathi_sudocs_and_agencies.ndj
+
+(The input file hathi_sudocs_and_agencies.ndj can be got by running 
+uom_traject_config_sudoc_agency.rb on the uom input data)
+
+
+8. Use sudoc-agency mapping to find potential govdocs:
+
+cd /htapps/mwarin.babel/gdweb_script
+bundle exec ruby scripts/find_govdocs_based_on_agency.rb agency.map non_govdoc_minimarc.ndj
+
+(The non_govdoc_minimarc.ndj can be got by running get_non_govdocs.rb on a full zephir dump:
+zcat zephir_full_YYYYMMDD_vufind.json.gz | bundle exec ruby scripts/get_non_govdocs.rb
+The zephir dump can be got from Tim P.)
