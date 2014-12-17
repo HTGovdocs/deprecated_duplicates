@@ -18,7 +18,7 @@ You need to create an .env file in the root dir of this project, with (at least)
     
 ... and you need the HTPH gem (https://github.com/HTGovdocs/HTPH-rubygem) installed.
 
-If missing, set up the database tables in /sql/hathi_gd.sql.
+If missing, set up the database tables in /sql/hathi_gd.sql (https://github.com/HTGovdocs/duplicates/blob/master/sql/hathi_gd.sql).
 
 In general, scripts are executed as such:
 
