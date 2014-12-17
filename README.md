@@ -1,10 +1,10 @@
 duplicates
 ==========
 
-Startup
-=======
-
 Contains the basics for duplicate detection.
+
+Startup
+-------
 
 You need to create an .env file in the root dir of this project, with (at least) the following variables set:
 
