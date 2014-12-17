@@ -1,9 +1,12 @@
 duplicates
 ==========
 
-Contains the basics for duplicate detection
+Startup
+=======
 
-You need to create an .env file with (at least) the following variables set:
+Contains the basics for duplicate detection.
+
+You need to create an .env file in the root dir of this project, with (at least) the following variables set:
 
     db_driver = xx
     db_url    = xx
