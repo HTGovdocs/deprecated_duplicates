@@ -15,8 +15,6 @@ You need to create an .env file in the root dir of this project, with (at least)
     db_host   = xx
     db_name   = xx
     db_port   = xx
-    
-... and you need the HTPH gem (https://github.com/HTGovdocs/HTPH-rubygem) installed.
 
 If missing, set up the database tables in /sql/hathi_gd.sql (https://github.com/HTGovdocs/duplicates/blob/master/sql/hathi_gd.sql).
 
