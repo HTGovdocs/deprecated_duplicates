@@ -6,7 +6,7 @@ Contains the basics for duplicate detection.
 Startup
 -------
 
-You need to create an .env file in the root dir of this project, with (at least) the following variables set:
+After your first bundle install, run startup.sh. It creates a dummy .env file which needs to be populated with real values.
 
     db_driver = xx
     db_url    = xx
@@ -21,4 +21,4 @@ If missing, set up the database tables in /sql/hathi_gd.sql (https://github.com/
 In general, scripts are executed as such:
 
     cd /root/to/project/dir/;
-    bundle exec ruby script/script_name.rb
+    bundle exec ruby script/script_name.rb;
