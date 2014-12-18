@@ -21,4 +21,7 @@ db_name   = xx
 db_port   = xx
 EOF
 
+cat "data_dir_path  = $SCRIPTPATH/data" >> $SCRIPTPATH/.env;
+cat "log_dir_path   = $SCRIPTPATH/log"  >> $SCRIPTPATH/.env;
+
 fi
