@@ -6,7 +6,15 @@ Contains the basics for duplicate detection.
 Startup
 -------
 
-After your first bundle install, run startup.sh. It creates a dummy .env file which needs to be populated with real values.
+Clone with:
+
+    git clone https://github.com/HTGovdocs/duplicates.git
+
+Install (in root dir of cloned project) with bundle:
+
+    bundle install --path .bundle
+
+After bundle install, run startup.sh. It creates a dummy .env file which needs to be populated with real values.
 
     db_driver = xx
     db_url    = xx
