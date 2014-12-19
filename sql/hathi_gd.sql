@@ -1,19 +1,52 @@
 use ht_repository;
 
-create table hathi_gd (
-  id      INT      not null auto_increment,
-  gov_doc TINYINT  not null,
-  htid    VARCHAR(30) not null unique,
-  hashsum CHAR(64) not null unique,
+-- Drop existing tables.
+drop table if exists hathi_enumc;
+drop table if exists hathi_isbn;
+drop table if exists hathi_issn;
+drop table if exists hathi_lccn;
+drop table if exists hathi_oclc;
+drop table if exists hathi_pubdate;
+drop table if exists hathi_publisher;
+drop table if exists hathi_sudoc;
+drop table if exists hathi_title;
+
+drop table if exists hathi_str;
+drop table if exists hathi_gd;
+drop table if exists hathi_input_file;
+
+-- Keep track of files used as input.
+-- PK is used as FK in hathi_gd, to ensure that
+-- one record from one file is only used once.
+create table hathi_input_file (
+  id        INT          not null auto_increment,
+  file_path VARCHAR(200) not null,
+  checksum  CHAR(32)     not null unique,
+  date_read DATETIME     not null,
   primary key (id)
 );
 
+-- Base record, from whence attributes and values radiate.
+create table hathi_gd (
+  id        INT         not null auto_increment,
+  gov_doc   TINYINT     not null,
+  file_id   INT         not null,
+  record_id VARCHAR(50) not null, -- Whatever the unique id is in the file
+  hashsum   CHAR(64)    not null unique,
+  primary key (id),
+  foreign key (file_id) references hathi_input_file(id),
+  unique key file_record_ids (file_id, record_id)
+);
+
+-- All values are stored as string ids, actual values stored here.
 create table hathi_str (
   id  INT not null auto_increment,
   str VARCHAR(750) not null,
   primary key (id)
 );
 
+-- All oclcs are a link between [hathi_gd]<-[hathi_oclc]->[hathi_str].
+-- The same goes for all other hathi_* attribute-value tables.
 create table hathi_oclc (
   gd_id  INT not null,
   str_id INT not null,
@@ -87,22 +120,3 @@ create table hathi_sudoc (
 );
 
 create index hathi_gd_str on hathi_str (str) using btree;
-create index hathi_gd_htid on hathi_gd (htid) using btree;
-
--- create or replace view v_hathi_attr as
--- SELECT hx.gd_id, 'pubdate' AS attr, hs.str AS val FROM hathi_pubdate AS hx JOIN hathi_str AS hs ON (hx.str_id = hs.id)
--- UNION
--- SELECT hx.gd_id, 'publisher' AS attr, hs.str AS val FROM hathi_publisher AS hx JOIN hathi_str AS hs ON (hx.str_id = hs.id)
--- UNION
--- SELECT hx.gd_id, 'enumc' AS attr, hs.str AS val FROM hathi_enumc AS hx JOIN hathi_str AS hs ON (hx.str_id = hs.id)
--- UNION
--- SELECT hx.gd_id, 'title' AS attr, hs.str AS val FROM hathi_title AS hx JOIN hathi_str AS hs ON (hx.str_id = hs.id)
--- UNION
--- SELECT hx.gd_id, 'isbn' AS attr, hs.str AS val FROM hathi_isbn AS hx JOIN hathi_str AS hs ON (hx.str_id = hs.id)
--- UNION
--- SELECT hx.gd_id, 'issn' AS attr, hs.str AS val FROM hathi_issn AS hx JOIN hathi_str AS hs ON (hx.str_id = hs.id)
--- UNION
--- SELECT hx.gd_id, 'lccn' AS attr, hs.str AS val FROM hathi_lccn AS hx JOIN hathi_str AS hs ON (hx.str_id = hs.id)
--- UNION
--- SELECT hx.gd_id, 'oclc' AS attr, hs.str AS val FROM hathi_oclc AS hx JOIN hathi_str AS hs ON (hx.str_id = hs.id)
--- ;
