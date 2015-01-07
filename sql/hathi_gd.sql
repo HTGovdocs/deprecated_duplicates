@@ -120,3 +120,4 @@ create table hathi_sudoc (
 );
 
 create index hathi_gd_str on hathi_str (str) using btree;
+create index hathi_record on hathi_gd (record_id) using btree;
