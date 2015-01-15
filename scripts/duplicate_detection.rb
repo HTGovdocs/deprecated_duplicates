@@ -4,6 +4,9 @@ require 'set';
 db    = HTPH::Hathidb::Db.new();
 @conn = db.get_conn();
 
+# The default is 1024 chars, which is too little.
+@conn.execute("SET SESSION group_concat_max_len = 10000");
+
 def run
   # Get all publishers and pubdates that cooccur more than once,
   # and all the other things they cooccur with. Not actually using
@@ -18,7 +21,7 @@ def run
       t.str_id AS title_id,
       l.str_id AS lccn_id,
       i.str_id AS issn_id,
-      GROUP_CONCAT(h.record_id ORDER BY h.record_id) AS record_ids
+      GROUP_CONCAT(h.id ORDER BY h.id) AS ids
     FROM
       hathi_gd                  AS h
       LEFT JOIN hathi_pubdate   AS d ON (h.id = d.gd_id)
@@ -37,7 +40,7 @@ def run
       lccn_id,
       issn_id
     HAVING
-      COUNT(h.record_id) >= 2
+      COUNT(h.id) >= 2
   ].join(" ");
   q_get_ids = @conn.prepare(sql_get_ids);
 
@@ -46,7 +49,7 @@ def run
   qmarks   = qmarks_a.join(',');
   sql_get_values = %W[
     SELECT
-      h.record_id,
+      h.id,
       d.str_id AS date_id,
       p.str_id AS publisher_id,
       s.str_id AS sudoc_id,
@@ -66,21 +69,21 @@ def run
       LEFT JOIN hathi_issn      AS i ON (h.id = i.gd_id)
       LEFT JOIN hathi_enumc     AS e ON (h.id = e.gd_id)
     WHERE
-      h.record_id IN (#{qmarks})
+      h.id IN (#{qmarks})
   ].join(' ');
   q_get_values = @conn.prepare(sql_get_values);
 
   seen = Set.new();
 
   q_get_ids.enumerate() do |row|
-    record_ids = row[:record_ids].split(',');
+    ids = row[:ids].split(',');
     # break if seen.size >= 500;
-    next if seen.include?(row[:record_ids]);
-    seen << row[:record_ids];
+    next if seen.include?(row[:ids]);
+    seen << row[:ids];
 
-    count_record_ids    = record_ids.size;
+    count_ids    = ids.size;
     chunk_max_size = 50;
-    enumc_record_id_map = {};
+    enumc_id_map = {};
 
     # For a cluster, get a hash of all values for sudoc, oclc, etc., 
     # and how many of each. {:sudoc_id=>{nil=>5}, :oclc_id=>{498486=>5}, ... }
@@ -93,12 +96,12 @@ def run
       :enumc_id => {},
     };
 
-    # In case there are more than 50 record_ids.
-    while record_ids.size > 0 do
+    # In case there are more than 50 ids.
+    while ids.size > 0 do
       ids_chunk = [];
       1.upto(50).each do
-        if record_ids.size > 0 then
-          ids_chunk << record_ids.shift;
+        if ids.size > 0 then
+          ids_chunk << ids.shift;
         end
       end
       padding = [nil] * (qmarks_a.size - ids_chunk.size);
@@ -107,9 +110,9 @@ def run
         [:sudoc_id, :oclc_id, :title_id, :lccn_id, :issn_id, :enumc_id].each do |x|
           uniq_attr_set[x][vals[x]] = 1;
         end
-        # Keep track of which enumc goes with which record_id(s).
-        enumc_record_id_map[vals[:enumc_id]] ||= Set.new();
-        enumc_record_id_map[vals[:enumc_id]] << vals[:record_id];
+        # Keep track of which enumc goes with which id(s).
+        enumc_id_map[vals[:enumc_id]] ||= Set.new();
+        enumc_id_map[vals[:enumc_id]] << vals[:id];
       end
     end
 
@@ -120,7 +123,7 @@ def run
     elsif uniq_attr_set[:enumc_id].keys.size == 1 then
       # All of the docs have the same enumchron.
       rel = "duplicates";
-    elsif uniq_attr_set[:enumc_id].keys.size == count_record_ids then
+    elsif uniq_attr_set[:enumc_id].keys.size == count_ids then
       # There are as many enumchrons as there are documents.
       rel = "related";
     else
@@ -128,10 +131,10 @@ def run
       # If so, then mark duplicates with asterisk,
       # and the cluster as a whole with asterisk.
       subclusters = false;
-      enumc_record_id_map.keys.each do |enumc| 
-        if enumc_record_id_map[enumc].size > 1 then
+      enumc_id_map.keys.each do |enumc| 
+        if enumc_id_map[enumc].size > 1 then
           subclusters = true;
-          puts "duplicates*\t#{enumc_record_id_map[enumc].sort.join(',')}";
+          puts "duplicates*\t#{enumc_id_map[enumc].sort.join(',')}";
         end
       end
       if subclusters == true then
@@ -140,7 +143,7 @@ def run
         rel = "unclear";
       end
     end
-    puts "#{rel}\t#{row[:record_ids]}";
+    puts "#{rel}\t#{row[:ids]}";
   end
 end
 
