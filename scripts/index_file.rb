@@ -4,6 +4,7 @@ require 'json';
 
 @str_mem      = {};
 @max_str_mem  = 10000;
+@max_str_len  = 749;
 @str_mem_hit  = 0;
 @str_mem_miss = 0;
 @sha_digester = nil;
@@ -39,7 +40,7 @@ def setup ()
 
   @loadfiles = {}; # Write tab-delim data, and when all is done, load into table.
   %w[isbn issn lccn oclc title enumc pubdate publisher sudoc].each do |suffix|
-    @loadfiles[suffix] = HTPH::Hathidata::Data.new("#{suffix}.dat").open('w');
+    @loadfiles[suffix] = HTPH::Hathidata::Data.new("#{suffix}.dat");
   end
 end
 
@@ -97,12 +98,17 @@ end
 def run (hdin)
   i    = 0;
   dups = 0;
+
+  @loadfiles.values.each do |hdout|
+    hdout.open('w');
+  end
+
   hdin.open('r').file.each_line do |line|
     i += 1;
 
     if i == 1 then
       next;
-#    elsif i > 20000 then
+#    elsif i > 3000 then
 #      puts "ok we are done here";
 #      break;
     elsif i % 1000 == 0 then
@@ -148,7 +154,7 @@ def run (hdin)
     puts sql;
     query = @conn.prepare(sql);
     query.execute(loadfile.path);
-    loadfile.delete();
+    # loadfile.delete();
   end
 
   puts @bench.prettyprint();
@@ -164,17 +170,25 @@ end
 def insert_line (json, gd_id)
   # Actually writes to several .dat files that are LOADed into db at the end.
   json.default = [];
-  oclcs    = get_from_json(json, 'oclc');
-  isbns    = get_from_json(json, 'isbn');
-  issns    = get_from_json(json, 'issn');
-  lccns    = get_from_json(json, 'lccn');
-  titles   = get_from_json(json, 'title', ':;').map{|x| HTPH::Hathinormalize.title(x)}.kompakt;
-  enumcs   = json['enumc'].map{|x| HTPH::Hathinormalize.enumc(x)}.kompakt;
-  imprints = json['imprint'].map{|x| x.split(/[:;]/).map{|y| y.strip.gsub(/[\[\]<>\(\)]/, '')}}.kompakt;
-  pubdates = get_from_json(json, 'pubdate');
+  oclcs      = get_from_json(json, 'oclc');
+  sudocs     = get_from_json(json, 'sudoc', ',;');
+  isbns      = get_from_json(json, 'isbn');
+  issns      = get_from_json(json, 'issn');
+  lccns      = get_from_json(json, 'lccn', ',;');
+  titles     = get_from_json(json, 'title', ':;').map{|x| HTPH::Hathinormalize.title(x)}.kompakt;
+  enumcs     = json['enumc'].map{|x| HTPH::Hathinormalize.enumc(x)}.kompakt;
+
+  # Imprints can go as soon as we're no longer using the hathifile for the hathi data.
+  imprints   = json['imprint'].map{|x| x.split(/[:;]/).map{|y| y.strip.gsub(/[\[\]<>\(\)]/, '')}}.kompakt;
+  pubdates   = get_from_json(json, 'pubdate');
+  publishers = json['publisher'];
 
   oclcs.each do |oclc|
     @loadfiles['oclc'].file.puts("#{gd_id}\t#{get_str_id(oclc)}");
+  end
+
+  sudocs.each do |sudoc|
+    @loadfiles['sudoc'].file.puts("#{gd_id}\t#{get_str_id(sudoc)}");
   end
 
   isbns.uniq.each do |isbn|
@@ -189,9 +203,8 @@ def insert_line (json, gd_id)
     @loadfiles['lccn'].file.puts("#{gd_id}\t#{get_str_id(lccn)}");
   end
 
-  # Title is the only one that can be real long. So we gotta truncate at 750.
   titles.uniq.each do |title|
-    @loadfiles['title'].file.puts("#{gd_id}\t#{get_str_id(title[0..749])}");
+    @loadfiles['title'].file.puts("#{gd_id}\t#{get_str_id(title)}");
   end
 
   enumcs.uniq.each do |enumc|
@@ -214,6 +227,13 @@ def insert_line (json, gd_id)
   pubdates.uniq.each do |pubdate|
     @loadfiles['pubdate'].file.puts("#{gd_id}\t#{get_str_id(pubdate)}");
   end
+
+  publishers.map{ |x| HTPH::Hathinormalize.agency(x) }.uniq.kompakt.each do |publisher|
+    @loadfiles['publisher'].file.puts(
+      "#{gd_id}\t#{get_str_id(HTPH::Hathinormalize.agency(publisher))}"
+    );
+  end
+
 end
 
 def get_str_id (str)
@@ -221,6 +241,7 @@ def get_str_id (str)
   str = str.gsub(/ +/, ' ');
   str = str.sub(/^ /, '');
   str = str.sub(/ $/, '');
+  str = str[0..@max_str_len];
 
   if str == '' then
     @log.w("Failing on #{str}");
@@ -265,22 +286,24 @@ def get_str_id (str)
 end
 
 if __FILE__ == $0 then
-  @do_delete = false;
-  if ARGV[0] == '--delete' then
-    @do_delete = true;
-    ARGV.shift;
-  end
+  setup();
 
-  infile = ARGV.shift;
-  if infile.nil? then
+  ARGV.map!{|arg|
+    (arg != '--delete' && arg) || delete() && nil;
+  }.compact!
+
+  if ARGV.size <= 0 then
     raise "Need infile as 1st arg.";
   end
-  hdin   = HTPH::Hathidata::Data.new(infile);
-  if !hdin.exists? then
-    raise "Cannot find infile #{hdin.path}.";
+
+  while  ARGV.size > 0 do
+    infile = ARGV.shift;
+    hdin   = HTPH::Hathidata::Data.new(infile);
+    if !hdin.exists? then
+      raise "Cannot find infile #{hdin.path}.";
+    end
+    
+    prep_infile(hdin);
+    run(hdin);
   end
-  setup();
-  prep_infile(hdin)
-  delete() if @do_delete;
-  run(hdin);
 end
