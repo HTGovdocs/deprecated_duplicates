@@ -34,8 +34,7 @@ create table hathi_gd (
   record_id VARCHAR(50) not null, -- Whatever the unique id is in the file
   hashsum   CHAR(64)    not null unique,
   primary key (id),
-  foreign key (file_id) references hathi_input_file(id),
-  unique key file_record_ids (file_id, record_id)
+  foreign key (file_id) references hathi_input_file(id)
 );
 
 -- All values are stored as string ids, actual values stored here.
