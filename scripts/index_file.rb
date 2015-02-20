@@ -8,9 +8,7 @@ require 'json';
 @str_mem_hit  = 0;
 @str_mem_miss = 0;
 @sha_digester = nil;
-# Covers: 1973, 1973-1974, 1973-74, 1973-, -1973, 1974 or 1975, 1975 i.e 1976
-# Any can end in a '?', begin with a 'c'
-@pubdate_rx   = /c?-?\d{4}\??(\s*(-|i.\s*e.|or)?\s*c?\d{0,4})\??/;
+@reject_pubdate_rx = Regexp.new(/^[^0-9ivxclmd.-]+$/i);
 
 # The German version of Array.compact, does both '' and nil, plus flatten and uniq.
 class Array
@@ -28,12 +26,12 @@ def setup ()
   last_id_sql         = "SELECT LAST_INSERT_ID() AS id";
   str_exist_sql       = "SELECT id, str FROM hathi_str WHERE str = ?";
   str_insert_sql      = "INSERT INTO hathi_str (str) VALUES (?)";
-  hathi_gd_insert_sql = "INSERT INTO hathi_gd (gov_doc, file_id, hashsum, record_id) VALUES (?, ?, ?, ?)";
+  hathi_gd_insert_sql = "INSERT INTO hathi_gd (gov_doc, file_id, hashsum, record_id, item_id) VALUES (?, ?, ?, ?, ?)";
 
-  @last_id_q          = @conn.prepare(last_id_sql);
-  @str_exist_q        = @conn.prepare(str_exist_sql);
-  @str_insert_q       = @conn.prepare(str_insert_sql);
-  @hathi_gd_insert_q  = @conn.prepare(hathi_gd_insert_sql);
+  @last_id_q         = @conn.prepare(last_id_sql);
+  @str_exist_q       = @conn.prepare(str_exist_sql);
+  @str_insert_q      = @conn.prepare(str_insert_sql);
+  @hathi_gd_insert_q = @conn.prepare(hathi_gd_insert_sql);
 
   @sha_digester = Digest::SHA256.new();
   @log          = HTPH::Hathilog::Log.new({:file_name => 'hathi_indexing.log'});
@@ -86,6 +84,7 @@ def delete
     hathi_pubdate
     hathi_publisher
     hathi_sudoc
+    hathi_related
     hathi_gd
   ].each do |tablename|
     sql = "DELETE FROM #{tablename}";
@@ -108,9 +107,9 @@ def run (hdin)
 
     if i == 1 then
       next;
-#    elsif i > 3000 then
-#      puts "ok we are done here";
-#      break;
+#   elsif i > 3000 then
+#     puts "ok we are done here";
+#     break;
     elsif i % 1000 == 0 then
       puts "#{i} ...";
     end
@@ -119,7 +118,11 @@ def run (hdin)
     hashsum   = @sha_digester.hexdigest(line);
     line_json = JSON.parse(line);
     rec_id    = line_json['record_id'].first;
-
+    item_id   = nil;
+    if !line_json['item_id'].nil? then
+      item_id = line_json['item_id'].first 
+    end
+    
     if rec_id.nil? then
       puts "bad line, no rec_id:\n#{line}";
       next;
@@ -128,7 +131,7 @@ def run (hdin)
     # Get an ID.
     begin
       @log.d("inserting #{[1, hashsum]} into hathi_gd_insert_q");
-      @hathi_gd_insert_q.execute(1, @file_id, hashsum, rec_id);
+      @hathi_gd_insert_q.execute(1, @file_id, hashsum, rec_id, item_id);
       @last_id_q.query() do |row|
         gd_id = row[:id];
       end
@@ -176,10 +179,7 @@ def insert_line (json, gd_id)
   issns      = get_from_json(json, 'issn');
   lccns      = get_from_json(json, 'lccn', ',;');
   titles     = get_from_json(json, 'title', ':;').map{|x| HTPH::Hathinormalize.title(x)}.kompakt;
-  enumcs     = json['enumc'].map{|x| HTPH::Hathinormalize.enumc(x)}.kompakt;
-
-  # Imprints can go as soon as we're no longer using the hathifile for the hathi data.
-  imprints   = json['imprint'].map{|x| x.split(/[:;]/).map{|y| y.strip.gsub(/[\[\]<>\(\)]/, '')}}.kompakt;
+  enumcs     = json['enumc'].kompakt.map{|x| HTPH::Hathinormalize.enumc(x)}.kompakt;
   pubdates   = get_from_json(json, 'pubdate');
   publishers = json['publisher'];
 
@@ -188,6 +188,8 @@ def insert_line (json, gd_id)
   end
 
   sudocs.each do |sudoc|
+    sudoc.upcase!;
+    sudoc.tr_s!(' ', '');
     @loadfiles['sudoc'].file.puts("#{gd_id}\t#{get_str_id(sudoc)}");
   end
 
@@ -196,10 +198,14 @@ def insert_line (json, gd_id)
   end
 
   issns.uniq.each do |issn|
-    @loadfiles['issn'].file.puts("#{gd_id}\t#{get_str_id(issn)}");
+    next if issn == '1';
+    issn_str = get_str_id(issn);
+    @loadfiles['issn'].file.puts("#{gd_id}\t#{issn_str}");
   end
 
   lccns.uniq.each do |lccn|
+    lccn.upcase!;
+    lccn.tr_s!(' ', '');
     @loadfiles['lccn'].file.puts("#{gd_id}\t#{get_str_id(lccn)}");
   end
 
@@ -211,29 +217,16 @@ def insert_line (json, gd_id)
     @loadfiles['enumc'].file.puts("#{gd_id}\t#{get_str_id(enumc)}");
   end
 
-  if imprints.size > 0 then
-    if !imprints.last.nil? && !imprints.last.match(@pubdate_rx).nil? then
-      imp_date = imprints.last.match(@pubdate_rx)[0];
-      imprints.last.gsub!(imp_date, '');
-    end
-  end
-
-  imprints.map{ |x| HTPH::Hathinormalize.agency(x) }.uniq.compact.each do |publisher|
-    if publisher != '' then
-      @loadfiles['publisher'].file.puts("#{gd_id}\t#{get_str_id(publisher)}");
-    end
-  end
-
   pubdates.uniq.each do |pubdate|
+    next if issn =~ @reject_pubdate_rx;
     @loadfiles['pubdate'].file.puts("#{gd_id}\t#{get_str_id(pubdate)}");
   end
 
-  publishers.map{ |x| HTPH::Hathinormalize.agency(x) }.uniq.kompakt.each do |publisher|
+  publishers.map{ |x| get_str_id(HTPH::Hathinormalize.agency(x)) }.uniq.kompakt.each do |publisher|    
     @loadfiles['publisher'].file.puts(
-      "#{gd_id}\t#{get_str_id(HTPH::Hathinormalize.agency(publisher))}"
+      "#{gd_id}\t#{publisher}"
     );
   end
-
 end
 
 def get_str_id (str)
