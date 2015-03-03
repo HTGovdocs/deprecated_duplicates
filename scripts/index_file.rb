@@ -13,7 +13,7 @@ require 'json';
 # The German version of Array.compact, does both '' and nil, plus flatten and uniq.
 class Array
   def kompakt
-    self.flatten.select { |x| 
+    self.flatten.select { |x|
       !x.nil? && x != ''
     }.uniq
   end
@@ -107,9 +107,9 @@ def run (hdin)
 
     if i == 1 then
       next;
-#   elsif i > 3000 then
-#     puts "ok we are done here";
-#     break;
+#    elsif i > 2000 then
+#      puts "ok we are done here";
+#      break;
     elsif i % 1000 == 0 then
       puts "#{i} ...";
     end
@@ -117,12 +117,12 @@ def run (hdin)
     gd_id     = nil;
     hashsum   = @sha_digester.hexdigest(line);
     line_json = JSON.parse(line);
-    rec_id    = line_json['record_id'].first;
+    rec_id    = line_json['record_id'].first.values.first;
     item_id   = nil;
     if !line_json['item_id'].nil? then
-      item_id = line_json['item_id'].first 
+      item_id = line_json['item_id'].values.first;
     end
-    
+
     if rec_id.nil? then
       puts "bad line, no rec_id:\n#{line}";
       next;
@@ -153,7 +153,7 @@ def run (hdin)
   @loadfiles.keys.each do |suffix|
     loadfile = @loadfiles[suffix];
     loadfile.close();
-    sql = "LOAD DATA LOCAL INFILE ? INTO TABLE hathi_#{suffix} (gd_id, str_id)";
+    sql = "LOAD DATA LOCAL INFILE ? INTO TABLE hathi_#{suffix} (gd_id, str_id, marc_field)";
     puts sql;
     query = @conn.prepare(sql);
     query.execute(loadfile.path);
@@ -165,7 +165,7 @@ def run (hdin)
 end
 
 def get_from_json (j, k, splitstr = ',; ')
-  return j[k].map { |x| 
+  return j[k].map { |x|
     x.to_s.strip.split(/[#{splitstr}]/)
   }.kompakt;
 end
@@ -173,60 +173,97 @@ end
 def insert_line (json, gd_id)
   # Actually writes to several .dat files that are LOADed into db at the end.
   json.default = [];
-  oclcs      = get_from_json(json, 'oclc');
-  sudocs     = get_from_json(json, 'sudoc', ',;');
-  isbns      = get_from_json(json, 'isbn');
-  issns      = get_from_json(json, 'issn');
-  lccns      = get_from_json(json, 'lccn', ',;');
-  titles     = get_from_json(json, 'title', ':;').map{|x| HTPH::Hathinormalize.title(x)}.kompakt;
-  enumcs     = json['enumc'].kompakt.map{|x| HTPH::Hathinormalize.enumc(x)}.kompakt;
-  pubdates   = get_from_json(json, 'pubdate');
-  publishers = json['publisher'];
 
-  oclcs.each do |oclc|
-    @loadfiles['oclc'].file.puts("#{gd_id}\t#{get_str_id(oclc)}");
+  json['oclc'].each do |oclc|
+    marc_field = oclc.keys.first;
+    str_id     = get_str_id(oclc[marc_field]);
+    @loadfiles['oclc'].file.puts("#{gd_id}\t#{str_id}\t#{marc_field}");
   end
 
-  sudocs.each do |sudoc|
-    sudoc.upcase!;
-    sudoc.tr_s!(' ', '');
-    @loadfiles['sudoc'].file.puts("#{gd_id}\t#{get_str_id(sudoc)}");
+  json['sudoc'].each do |sudoc|
+    marc_field = sudoc.keys.first;
+    val        = sudoc[marc_field];
+    next if val.nil?;
+    val.gsub!(/ +/, '');
+    next if val.empty?;
+    val.upcase!;
+    str_id     = get_str_id(val);
+    @loadfiles['sudoc'].file.puts("#{gd_id}\t#{str_id}\t#{marc_field}");
   end
 
-  isbns.uniq.each do |isbn|
-    @loadfiles['isbn'].file.puts("#{gd_id}\t#{get_str_id(isbn)}");
+  json['isbn'].each do |isbn|
+    marc_field = isbn.keys.first;
+    val        = isbn[marc_field];
+    next if val.nil?;
+    next if val.empty?;
+    str_id     = get_str_id(val);
+    @loadfiles['isbn'].file.puts("#{gd_id}\t#{str_id}\t#{marc_field}");
   end
 
-  issns.uniq.each do |issn|
-    next if issn == '1';
-    issn_str = get_str_id(issn);
-    @loadfiles['issn'].file.puts("#{gd_id}\t#{issn_str}");
+  json['issn'].each do |issn|
+    marc_field = issn.keys.first;
+    val        = issn[marc_field];
+    next if val.nil?;
+    next if val.empty?;
+    next if val == '1';
+
+    # Sometimes an issn is catalogued as "0149-2195 (Print)",
+    # so remove all parentheticals.
+    val.gsub!(/ \(.+?\)/, '')
+
+    str_id = get_str_id(val);
+    @loadfiles['issn'].file.puts("#{gd_id}\t#{str_id}\t#{marc_field}");
   end
 
-  lccns.uniq.each do |lccn|
-    lccn.upcase!;
-    lccn.tr_s!(' ', '');
-    @loadfiles['lccn'].file.puts("#{gd_id}\t#{get_str_id(lccn)}");
+  json['lccn'].each do |lccn|
+    marc_field = lccn.keys.first;
+    val        = lccn[marc_field]
+    next if val.nil?;
+    val.tr_s!(' ', '');
+    val.tr_s!('^', '');
+    next if val.empty?;
+    val.upcase!;
+    str_id     = get_str_id(val);
+    @loadfiles['lccn'].file.puts("#{gd_id}\t#{str_id}\t#{marc_field}");
   end
 
-  titles.uniq.each do |title|
-    @loadfiles['title'].file.puts("#{gd_id}\t#{get_str_id(title)}");
+  json['title'].each do |title|
+    marc_field = title.keys.first;
+    val        = HTPH::Hathinormalize.title(title[marc_field]);
+    next if val.nil?;
+    next if val.empty?;
+    str_id = get_str_id(val);
+    @loadfiles['title'].file.puts("#{gd_id}\t#{str_id}\t#{marc_field}");
   end
 
-  enumcs.uniq.each do |enumc|
-    @loadfiles['enumc'].file.puts("#{gd_id}\t#{get_str_id(enumc)}");
+  json['enumc'].each do |enumc|
+    marc_field = enumc[0];
+    val        = HTPH::Hathinormalize.enumc(enumc[1]);
+    next if val.nil?;
+    next if val.empty?;
+    str_id = get_str_id(val);
+    @loadfiles['enumc'].file.puts("#{gd_id}\t#{str_id}\t#{marc_field}");
   end
 
-  pubdates.uniq.each do |pubdate|
-    next if issn =~ @reject_pubdate_rx;
-    @loadfiles['pubdate'].file.puts("#{gd_id}\t#{get_str_id(pubdate)}");
+  json['pubdate'].each do |pubdate|
+    marc_field = pubdate.keys.first;
+    val        = pubdate[marc_field];
+    # Date normalization?
+    next if val.nil?
+    next if val.empty?;
+    str_id     = get_str_id(val);
+    @loadfiles['pubdate'].file.puts("#{gd_id}\t#{str_id}\t#{marc_field}");
   end
 
-  publishers.map{ |x| get_str_id(HTPH::Hathinormalize.agency(x)) }.uniq.kompakt.each do |publisher|    
-    @loadfiles['publisher'].file.puts(
-      "#{gd_id}\t#{publisher}"
-    );
+  json['publisher'].each do |publisher|
+    marc_field = publisher.keys.first;
+    val        = HTPH::Hathinormalize.agency(publisher[marc_field]);
+    next if val.nil?;
+    next if val.empty?;
+    str_id = get_str_id(val);
+    @loadfiles['publisher'].file.puts("#{gd_id}\t#{str_id}\t#{marc_field}");
   end
+
 end
 
 def get_str_id (str)
@@ -295,7 +332,7 @@ if __FILE__ == $0 then
     if !hdin.exists? then
       raise "Cannot find infile #{hdin.path}.";
     end
-    
+
     prep_infile(hdin);
     run(hdin);
   end
