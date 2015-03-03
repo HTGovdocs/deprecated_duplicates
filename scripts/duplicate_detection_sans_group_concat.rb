@@ -1,6 +1,8 @@
 require 'htph';
 require 'set';
 
+# Nota Bene, output should be passed through `sort -u`.
+
 db    = HTPH::Hathidb::Db.new();
 @conn = db.get_conn();
 
@@ -8,22 +10,32 @@ def run
   # Clean the table of related ids.
   sql_delete_related = "DELETE FROM hathi_related";
   q_delete_related   = @conn.prepare(sql_delete_related);
-  puts sql_delete_related;
+  STDERR.puts sql_delete_related;
   q_delete_related.execute();
 
   # Get related ids and the checksum of the things that make them related.
   # Enum-chrons are NOT included in this pass.
+  # -- dropped title.
   sql_get_related = %w[
     SELECT
       h.id AS gd_id,
-      MD5(CONCAT_WS(',', d.str_id, p.str_id, s.str_id, o.str_id, t.str_id, l.str_id, i.str_id)) AS checksum
+      MD5(
+        CONCAT_WS(
+          ',', 
+          COALESCE(d.str_id, ''), 
+          COALESCE(p.str_id, ''), 
+          COALESCE(s.str_id, ''), 
+          COALESCE(o.str_id, ''), 
+          COALESCE(l.str_id, ''), 
+          COALESCE(i.str_id, '')
+        )
+      ) AS checksum
     FROM
       hathi_gd                  AS h
       LEFT JOIN hathi_pubdate   AS d ON (h.id = d.gd_id)
       LEFT JOIN hathi_publisher AS p ON (h.id = p.gd_id)
       LEFT JOIN hathi_sudoc     AS s ON (h.id = s.gd_id)
       LEFT JOIN hathi_oclc      AS o ON (h.id = o.gd_id)
-      LEFT JOIN hathi_title     AS t ON (h.id = t.gd_id)
       LEFT JOIN hathi_lccn      AS l ON (h.id = l.gd_id)
       LEFT JOIN hathi_issn      AS i ON (h.id = i.gd_id)
   ].join(" ");
@@ -33,7 +45,7 @@ def run
   sql_load_related = "LOAD DATA LOCAL INFILE ? INTO TABLE hathi_related (gd_id, checksum)";
   q_load_related   = @conn.prepare(sql_load_related);
 
-  sql_get_checksums = "SELECT checksum FROM hathi_related GROUP BY checksum HAVING COUNT(checksum) >= 2";
+  sql_get_checksums = "SELECT DISTINCT checksum FROM hathi_related";
   q_get_checksums   = @conn.prepare(sql_get_checksums);
 
   sql_get_ids = %w[SELECT gd_id FROM hathi_related WHERE checksum = ?].join(' ');
@@ -68,14 +80,14 @@ def run
   ].join(' ');
   q_get_values = @conn.prepare(sql_get_values);
 
-  seen = Set.new();
+  seen = {};
 
   hdout = HTPH::Hathidata::Data.new('related_ids_by_hash.dat').open('w');
   q_get_related.enumerate() do |row|
     hdout.file.puts("#{row[:gd_id]}\t#{row[:checksum]}");
   end
   hdout.close();
-  puts sql_load_related;
+  STDERR.puts sql_load_related;
   q_load_related.execute(hdout.path);
   
   # Loop over checksums that are known to have 2+ ids.
@@ -90,9 +102,17 @@ def run
 
     ids.sort!;
     ids_clone = ids.clone;
-    next if seen.include?(ids);
-    seen << ids;
-    count_ids    = ids.size;
+    # Lets see how bad it gets without seen.
+    # next if seen.has_key?(ids);
+    # seen[ids] = 1;
+    count_ids = ids.size;
+
+    if count_ids == 1 then
+      # If there is only one ID, then why bother?
+      puts "solo\t#{ids[0]}";
+      next;
+    end
+
     chunk_max_size = 50;
     enumc_id_map = {};
 
@@ -110,7 +130,7 @@ def run
     # In case there are more than 50 ids.
     while ids.size > 0 do
       ids_chunk = [];
-      1.upto(50).each do
+      1.upto(chunk_max_size).each do
         if ids.size > 0 then
           ids_chunk << ids.shift;
         end
@@ -158,4 +178,6 @@ def run
   end
 end
 
-run();
+if __FILE__ == $0 then
+  run();
+end
