@@ -5,6 +5,7 @@ conn = db.get_conn();
 
 sql = %w[
   SELECT
+    hif.id,
     hif.file_path,
     hif.date_read,
     COUNT(hg.id) AS c
