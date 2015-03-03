@@ -5,7 +5,7 @@ db    = HTPH::Hathidb::Db.new();
 @conn = db.get_conn();
 
 # The default is 1024 chars, which is too little.
-@conn.execute("SET SESSION group_concat_max_len = 10000");
+@conn.execute("SET SESSION group_concat_max_len = 80000");
 
 def run
   # Get all publishers and pubdates that cooccur more than once,
