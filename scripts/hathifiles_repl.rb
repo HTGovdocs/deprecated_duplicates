@@ -17,6 +17,7 @@ db         = HTPH::Hathidb::Db.new();
   'oclc'      => true,
   'pubdate'   => true,
   'publisher' => true,
+  'sudoc'     => true,
   'title'     => true,
 };
 
