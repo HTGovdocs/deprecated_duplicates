@@ -3,6 +3,7 @@ require 'traject/marc_reader';
 require 'traject/macros/marc21';
 require 'traject/macros/marc21_semantics';
 require 'traject/alephsequential_reader';
+require 'traject/ndj_reader';
 require 'json';
 
 @@spec = {
@@ -24,15 +25,12 @@ require 'json';
 
 class HathiMarcReader
   # Call thusly-like:
-  #   zcat CIC.ndj.gz | bundle exec ruby CIC_marcreader.rb
+  #   zcat CIC.ndj.gz | bundle exec ruby general_marcreader.rb
   # or:
-  #   bundle exec ruby CIC_marcreader.rb CIC.ndj
+  #   bundle exec ruby general_marcreader.rb CIC.ndj
   # Add 'aleph' as commandline argument if you want to use Traject::AlephSequentialReader
 
   def main
-    STDERR.puts "Reader is a #{@reader.class}";
-    STDERR.puts "Spec is #{@@spec}";
-
     @reader.each do |marcrecord| # Marc::Record
       out = {}; # 1 json line per marc record
       holdings = []; # The holdings (pairs of 974u and z), if any.
@@ -45,7 +43,6 @@ class HathiMarcReader
             if !@@spec.has_key?(tagsub) then
               tagsub = f.tag + subfield.code; # e.g. 260c
             end
-
             if tagsub =~ /^974[uz]$/ then
               # Special case: holdings. Always look for no matter what @@spec says.
               holding[tagsub] = strip_val(subfield.value);
@@ -103,7 +100,6 @@ class HathiMarcReader
             puts out.to_json;
           end
         end
-
       end
     end
   end
@@ -115,13 +111,8 @@ class HathiMarcReader
 end
 
 class JsonReader < HathiMarcReader
-  def initialize (p_settings = nil)
-    @settings = p_settings.nil? ? {
-      "reader_class_name" => "Traject::MarcReader",
-      "marc_source.type"  => "json"
-    } : p_settings;
-
-    @reader = Traject::MarcReader.new(ARGF, @settings);
+  def initialize ()
+    @reader = Traject::NDJReader.new(ARGF, {});
     return self;
   end
 end
@@ -133,11 +124,11 @@ class AlephReader < HathiMarcReader
   end
 end
 
-if __FILE__ == $0 then  
+if __FILE__ == $0 then
   hmr = nil;
   if ARGV.include?('aleph') then
     ARGV.delete('aleph');
-    hmr = AlephReader.new();    
+    hmr = AlephReader.new();
   else
     hmr = JsonReader.new();
   end
