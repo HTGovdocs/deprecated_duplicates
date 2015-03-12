@@ -176,7 +176,10 @@ def insert_line (json, gd_id)
 
   json['oclc'].each do |oclc|
     marc_field = oclc.keys.first;
-    str_id     = get_str_id(oclc[marc_field]);
+    val        = HTPH::Hathinormalize.oclc(oclc[marc_field]);
+    next if val.nil?;
+    next if val.empty?;
+    str_id     = get_str_id(val);
     @loadfiles['oclc'].file.puts("#{gd_id}\t#{str_id}\t#{marc_field}");
   end
 
