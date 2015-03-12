@@ -1,10 +1,19 @@
 require 'htph';
 
-# List all the @attrs for all the solo clusters in @file.
+# List all the @attrs for all the solo clusters in @file 
+# where @attr occurs at least @threshold times.
+# This should shine some light on what the dup detection does wrong:
+# for instance, there *should* be few (if any) solo clusters with the same oclc.
+#
+# So do:
+#   bundle exec ruby scripts/inspect_solos.rb detected_duplicates.tsv oclc 2
+# ... and inspect the output.
+#
+# Up the value of @threshold for fewer but bigger clusters.
 
 @file      = ARGV.shift;
 @attr      = ARGV.shift;
-@threshold = ARGV.shift.to_i || 1;
+@threshold = (ARGV.shift || 1).to_i;
 
 @max  = 1000;
 db    = HTPH::Hathidb::Db.new();
