@@ -10,15 +10,6 @@ require 'json';
 @sha_digester = nil;
 @reject_pubdate_rx = Regexp.new(/^[^0-9ivxclmd.-]+$/i);
 
-# The German version of Array.compact, does both '' and nil, plus flatten and uniq.
-class Array
-  def kompakt
-    self.flatten.select { |x|
-      !x.nil? && x != ''
-    }.uniq
-  end
-end
-
 def setup ()
   db     = HTPH::Hathidb::Db.new();
   @conn  = db.get_conn();
@@ -167,19 +158,16 @@ def run (hdin)
   puts "#{dups} dups";
 end
 
-def get_from_json (j, k, splitstr = ',; ')
-  return j[k].map { |x|
-    x.to_s.strip.split(/[#{splitstr}]/)
-  }.kompakt;
-end
-
 def insert_line (json, gd_id)
   # Actually writes to several .dat files that are LOADed into db at the end.
   json.default = [];
 
   json['oclc'].each do |oclc|
     marc_field = oclc.keys.first;
-    str_id     = get_str_id(oclc[marc_field]);
+    val        = HTPH::Hathinormalize.oclc(oclc[marc_field]);
+    next if val.nil?;
+    next if val.empty?;
+    str_id     = get_str_id(val);
     @loadfiles['oclc'].file.puts("#{gd_id}\t#{str_id}\t#{marc_field}");
   end
 

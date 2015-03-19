@@ -48,7 +48,7 @@ def main ()
       end
     end
   else
-    ARGV.each do |id|
+    ARGV.map{|x| x.split(/\D/)}.flatten.each do |id|
       puts "\n## #{id} ##";
       get_doc(id);
     end

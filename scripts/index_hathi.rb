@@ -17,7 +17,7 @@ def setup ()
   last_id_sql         = "SELECT LAST_INSERT_ID() AS id";
   str_exist_sql       = "SELECT id, str FROM hathi_str WHERE str = ?";
   str_insert_sql      = "INSERT INTO hathi_str (str) VALUES (?)";
-  hathi_gd_insert_sql = "INSERT INTO hathi_gd (gov_doc, hashsum, htid) VALUES (?, ?, ?)";
+  hathi_gd_insert_sql = "INSERT INTO hathi_gd (gov_doc, file_id, hashsum, record_id) VALUES (?, ?, ?)";
 
   @last_id_q          = @conn.prepare(last_id_sql);
   @str_exist_q        = @conn.prepare(str_exist_sql);

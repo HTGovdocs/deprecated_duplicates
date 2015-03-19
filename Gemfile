@@ -1,5 +1,6 @@
 source 'https://rubygems.org';
 
+gem 'httpclient'
 gem 'marc';
 gem 'pry';
 gem 'traject', '~> 1.1.0';
