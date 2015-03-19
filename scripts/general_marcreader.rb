@@ -6,7 +6,7 @@ require 'traject/alephsequential_reader';
 require 'json';
 
 @@spec = {
-  '001'  => 'record_id',
+  '001'  => '001',
   '010a' => 'lccn',
   '022a' => 'issn',
   '035a' => 'oclc',
@@ -32,9 +32,13 @@ class HathiMarcReader
   def main
     STDERR.puts "Reader is a #{@reader.class}";
     STDERR.puts "Spec is #{@@spec}";
-
+    fn = ARGF.filename 
+    line_count = 0
     @reader.each do |marcrecord| # Marc::Record
+      line_count += 1
       out = {}; # 1 json line per marc record
+      out[:source_file] = ARGF.filename
+      out[:record_id] = line_count
       holdings = []; # The holdings (pairs of 974u and z), if any.
       marcrecord.fields.each do |f| # MARC::DataField
         holding = {};

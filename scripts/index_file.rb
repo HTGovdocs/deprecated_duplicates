@@ -43,7 +43,10 @@ def setup ()
 end
 
 def prep_infile (hdin)
-  checksum = %x{md5sum #{hdin.path}}.split(" ")[0];
+  #we need the actual source file, not the processed one.
+  source_path = JSON.parse(open(hdin.path, 'r').readline)['source_file']
+  
+  checksum = %x{md5sum #{source_path}}.split(" ")[0];
   puts "checksum is <#{checksum}>";
 
   input_select_sql = "SELECT id, date_read FROM hathi_input_file WHERE checksum = ?";
@@ -60,7 +63,7 @@ def prep_infile (hdin)
   if @file_id.nil? then
     puts "We haven't seen #{hdin.path} before, inserting...";
     puts input_insert_sql;
-    input_insert_q.execute(hdin.path, checksum);
+    input_insert_q.execute(source_path, checksum);
     @last_id_q.enumerate do |row|
       @file_id = row[:id];
     end
@@ -117,7 +120,7 @@ def run (hdin)
     gd_id     = nil;
     hashsum   = @sha_digester.hexdigest(line);
     line_json = JSON.parse(line);
-    rec_id    = line_json['record_id'].first.values.first;
+    rec_id    = line_json['record_id'];
     item_id   = nil;
     if !line_json['item_id'].nil? then
       item_id = line_json['item_id'].values.first;
