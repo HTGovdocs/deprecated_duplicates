@@ -36,7 +36,7 @@ MARC::ControlField.control_tags.delete('FMT');
 class HathiMarcReader
   def main
     @reader.each_with_index do |marcrecord,i| # Marc::Record
-      out = {'origin' => "#{@infile}:#{i}"}; # 1 json line per marc record
+      out = {'infile' => @infile, 'lineno' => i}; # 1 json line per marc record
       holdings = []; # The holdings (pairs of 974u and z), if any.
       marcrecord.fields.each do |f| # MARC::DataField
         holding = {};
@@ -115,13 +115,11 @@ end
 
 class JsonReader < HathiMarcReader
   def initialize (stream)
-
     logger = Logger.new(STDERR);
     logger.formatter = proc do |severity, datetime, progname, msg|
       fileLine = caller(2)[4].split(':')[0,2].join(':');
       "#{datetime} | #{fileLine} | #{severity} | #{msg}\n";
     end
-
     @infile = stream;
     @reader = Traject::NDJReader.new(check_gz(stream), {:logger => logger});
     return self;
