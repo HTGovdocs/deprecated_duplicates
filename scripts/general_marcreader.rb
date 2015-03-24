@@ -1,10 +1,17 @@
+require 'json';
+require 'logger';
 require 'traject';
-require 'traject/marc_reader';
+require 'traject/alephsequential_reader';
 require 'traject/macros/marc21';
 require 'traject/macros/marc21_semantics';
-require 'traject/alephsequential_reader';
+require 'traject/marc_reader';
 require 'traject/ndj_reader';
-require 'json';
+require 'zlib';
+
+# Call thusly:
+#   bundle exec ruby general_marcreader.rb CIC.ndj
+# Add 'aleph' as commandline argument if you want to use Traject::AlephSequentialReader
+# Will transparently handle .gz extension.
 
 @@spec = {
   '001'  => 'record_id',
@@ -23,16 +30,13 @@ require 'json';
   '710'  => 'publisher',
 };
 
-class HathiMarcReader
-  # Call thusly-like:
-  #   zcat CIC.ndj.gz | bundle exec ruby general_marcreader.rb
-  # or:
-  #   bundle exec ruby general_marcreader.rb CIC.ndj
-  # Add 'aleph' as commandline argument if you want to use Traject::AlephSequentialReader
+# Without this we can't parse zephir_full_* files, which have a FMT in them.
+MARC::ControlField.control_tags.delete('FMT');
 
+class HathiMarcReader
   def main
-    @reader.each do |marcrecord| # Marc::Record
-      out = {}; # 1 json line per marc record
+    @reader.each_with_index do |marcrecord,i| # Marc::Record
+      out = {'origin' => "#{@infile}:#{i}"}; # 1 json line per marc record
       holdings = []; # The holdings (pairs of 974u and z), if any.
       marcrecord.fields.each do |f| # MARC::DataField
         holding = {};
@@ -107,30 +111,51 @@ class HathiMarcReader
   def strip_val (str)
     str.strip.gsub(/ +/, ' ');
   end
-
 end
 
 class JsonReader < HathiMarcReader
-  def initialize ()
-    @reader = Traject::NDJReader.new(ARGF, {});
+  def initialize (stream)
+
+    logger = Logger.new(STDERR);
+    logger.formatter = proc do |severity, datetime, progname, msg|
+      fileLine = caller(2)[4].split(':')[0,2].join(':');
+      "#{datetime} | #{fileLine} | #{severity} | #{msg}\n";
+    end
+
+    @infile = stream;
+    @reader = Traject::NDJReader.new(check_gz(stream), {:logger => logger});
     return self;
   end
 end
 
 class AlephReader < HathiMarcReader
-  def initialize
-    @reader = Traject::AlephSequentialReader.new(ARGF, {});
+  def initialize (stream)
+    @infile = stream;
+    @reader = Traject::AlephSequentialReader.new(check_gz(stream), {});
     return self;
   end
 end
 
+def check_gz (file_path)
+  if file_path =~ /\.gz$/ then
+    return Zlib::GzipReader.open(file_path);
+  end
+  return File.new(file_path);
+end
+
 if __FILE__ == $0 then
   hmr = nil;
+  aleph = false;
   if ARGV.include?('aleph') then
     ARGV.delete('aleph');
-    hmr = AlephReader.new();
-  else
-    hmr = JsonReader.new();
+    aleph = true;
   end
-  hmr.main();
+  ARGV.each do |arg|
+    if aleph then
+      hmr = AlephReader.new(arg);
+    else
+      hmr = JsonReader.new(arg);
+    end
+    hmr.main();
+  end
 end
