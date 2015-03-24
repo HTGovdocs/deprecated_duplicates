@@ -17,12 +17,16 @@ def setup ()
   last_id_sql         = "SELECT LAST_INSERT_ID() AS id";
   str_exist_sql       = "SELECT id, str FROM hathi_str WHERE str = ?";
   str_insert_sql      = "INSERT INTO hathi_str (str) VALUES (?)";
-  hathi_gd_insert_sql = "INSERT INTO hathi_gd (gov_doc, file_id, hashsum, record_id, item_id) VALUES (?, ?, ?, ?, ?)";
+  hathi_gd_insert_sql = "INSERT INTO hathi_gd (gov_doc, file_id, lineno, hashsum, record_id, item_id) VALUES (?, ?, ?, ?, ?, ?)";
+  input_select_sql    = "SELECT id FROM hathi_input_file WHERE file_path = ?";
+  input_insert_sql    = "INSERT INTO hathi_input_file (file_path, date_read) VALUES (?, SYSDATE())";
 
   @last_id_q         = @conn.prepare(last_id_sql);
   @str_exist_q       = @conn.prepare(str_exist_sql);
   @str_insert_q      = @conn.prepare(str_insert_sql);
   @hathi_gd_insert_q = @conn.prepare(hathi_gd_insert_sql);
+  @input_select_q    = @conn.prepare(input_select_sql);
+  @input_insert_q    = @conn.prepare(input_insert_sql);
 
   @sha_digester = Digest::SHA256.new();
   @log          = HTPH::Hathilog::Log.new({:file_name => 'hathi_indexing.log'});
@@ -31,37 +35,8 @@ def setup ()
   %w[isbn issn lccn oclc title enumc pubdate publisher sudoc].each do |suffix|
     @loadfiles[suffix] = HTPH::Hathidata::Data.new("#{suffix}.dat");
   end
-end
 
-def prep_infile (hdin)
-  checksum = %x{md5sum #{hdin.path}}.split(" ")[0];
-  puts "checksum is <#{checksum}>";
-
-  input_select_sql = "SELECT id, date_read FROM hathi_input_file WHERE checksum = ?";
-  input_insert_sql = "INSERT INTO hathi_input_file (file_path, checksum, date_read) VALUES (?, ?, SYSDATE())";
-  input_select_q   = @conn.prepare(input_select_sql);
-  input_insert_q   = @conn.prepare(input_insert_sql);
-
-  @file_id = nil;
-  input_select_q.enumerate(checksum) do |row|
-    puts "We've seen #{hdin.path} before, at #{row[:date_read]}";
-    @file_id = row[:id];
-  end
-
-  if @file_id.nil? then
-    puts "We haven't seen #{hdin.path} before, inserting...";
-    puts input_insert_sql;
-    input_insert_q.execute(hdin.path, checksum);
-    @last_id_q.enumerate do |row|
-      @file_id = row[:id];
-    end
-  end
-
-  if @file_id.nil? then
-    raise "Could not get a file id.";
-  else
-    puts "file_id is #{@file_id}";
-  end
+  @infile_cache = {};
 end
 
 def delete
@@ -85,6 +60,31 @@ def delete
   end
 end
 
+def get_infile_id (infile)
+  if @infile_cache.has_key?(infile) then
+    return @infile_cache[infile];
+  end
+
+  file_id = nil;
+  @input_select_q.enumerate(infile) do |row|
+    file_id = row[:id];    
+  end
+
+  if file_id.nil? then
+    @input_insert_q.execute(infile);
+    @last_id_q.enumerate do |row|
+      file_id = row[:id];
+    end
+  end
+
+  if file_id.nil? then
+    raise "a stink: [#{infile}], #{@infile_cache}";
+  end
+
+  @infile_cache[infile] = file_id;
+  return file_id;
+end
+
 def run (hdin)
   i    = 0;
   dups = 0;
@@ -98,18 +98,22 @@ def run (hdin)
 
     if i == 1 then
       next;
-#    elsif i > 2000 then
-#      puts "ok we are done here";
-#      break;
+      # elsif i > 2000 then
+      #  puts "ok we are done here";
+      #  break;
     elsif i % 1000 == 0 then
       puts "#{i} ...";
     end
 
     gd_id     = nil;
-    hashsum   = @sha_digester.hexdigest(line);
-    line_json = JSON.parse(line);
-    rec_id    = line_json['record_id'].first.values.first;
     item_id   = nil;
+    line_json = JSON.parse(line);
+    infile    = line_json['infile'];
+    file_id   = get_infile_id(infile)
+    lineno    = line_json['lineno'];
+    hashsum   = @sha_digester.hexdigest(line);
+    rec_id    = line_json['record_id'].first.values.first;
+
     if !line_json['item_id'].nil? then
       item_id = line_json['item_id'].values.first;
     end
@@ -121,8 +125,7 @@ def run (hdin)
 
     # Get an ID.
     begin
-      @log.d("inserting #{[1, hashsum]} into hathi_gd_insert_q");
-      @hathi_gd_insert_q.execute(1, @file_id, hashsum, rec_id, item_id);
+      @hathi_gd_insert_q.execute(1, file_id, lineno, hashsum, rec_id, item_id);
       @last_id_q.query() do |row|
         gd_id = row[:id];
       end
@@ -319,7 +322,6 @@ if __FILE__ == $0 then
       raise "Cannot find infile #{hdin.path}.";
     end
 
-    prep_infile(hdin);
     run(hdin);
   end
 end
