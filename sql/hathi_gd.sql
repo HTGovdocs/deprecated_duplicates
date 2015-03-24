@@ -1,5 +1,39 @@
 use ht_repository;
 
+-- Dropping indexes
+drop index hathi_gd_str on hathi_str;
+drop index hathi_record on hathi_gd;
+drop index related_checksum on hathi_related;
+drop index related_gd_id on hathi_related;
+
+drop index hathi_sudoc_gd_id  on hathi_sudoc;
+drop index hathi_sudoc_str_id on hathi_sudoc;
+
+drop index hathi_publisher_gd_id  on hathi_publisher;
+drop index hathi_publisher_str_id on hathi_publisher;
+
+drop index hathi_pubdate_gd_id  on hathi_pubdate;
+drop index hathi_pubdate_str_id on hathi_pubdate;
+
+drop index hathi_enumc_gd_id  on hathi_enumc;
+drop index hathi_enumc_str_id on hathi_enumc;
+
+drop index hathi_title_gd_id  on hathi_title;
+drop index hathi_title_str_id on hathi_title;
+
+drop index hathi_isbn_gd_id  on hathi_isbn;
+drop index hathi_isbn_str_id on hathi_isbn;
+
+drop index hathi_issn_gd_id  on hathi_issn;
+drop index hathi_issn_str_id on hathi_issn;
+
+drop index hathi_lccn_gd_id  on hathi_lccn;
+drop index hathi_lccn_str_id on hathi_lccn;
+
+drop index hathi_oclc_gd_id  on hathi_oclc;
+drop index hathi_oclc_str_id on hathi_oclc;
+
+
 -- Drop existing tables.
 drop table if exists hathi_enumc;
 drop table if exists hathi_isbn;
@@ -12,9 +46,9 @@ drop table if exists hathi_sudoc;
 drop table if exists hathi_title;
 
 drop table if exists hathi_str;
+drop table if exists hathi_related;
 drop table if exists hathi_input_file;
 drop table if exists hathi_gd;
-drop table if exists hathi_related;
 
 -- Keep track of files used as input.
 -- PK is used as FK in hathi_gd, to ensure that
@@ -22,7 +56,6 @@ drop table if exists hathi_related;
 create table hathi_input_file (
   id        INT          not null auto_increment,
   file_path VARCHAR(200) not null,
-  checksum  CHAR(32)     not null unique,
   date_read DATETIME     not null,
   primary key (id)
 );
@@ -31,7 +64,8 @@ create table hathi_input_file (
 create table hathi_gd (
   id        INT         not null auto_increment,
   gov_doc   TINYINT     not null,
-  file_id   INT         not null,
+  file_id   INT         not null, -- The file we got the record from
+  lineno    INT         not null, -- The line in the input file where we got the record.
   record_id VARCHAR(50) not null, -- Whatever the unique id is of the base record in the file.
   item_id  VARCHAR(50)  null,     -- If the record has holdings, the id of the item.
   hashsum   CHAR(64)    not null unique,
