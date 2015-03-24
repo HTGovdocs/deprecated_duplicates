@@ -170,11 +170,9 @@ def insert_line (json, gd_id)
 
   json['sudoc'].each do |sudoc|
     marc_field = sudoc.keys.first;
-    val        = sudoc[marc_field];
+    val        = HTPH::Hathinormalize.sudoc(sudoc[marc_field]);
     next if val.nil?;
-    val.gsub!(/ +/, '');
     next if val.empty?;
-    val.upcase!;
     str_id     = get_str_id(val);
     @loadfiles['sudoc'].file.puts("#{gd_id}\t#{str_id}\t#{marc_field}");
   end
