@@ -14,6 +14,7 @@ union  = @tables.map { |x|
 big_sql = %W[
 SELECT
     hif.file_path,
+    hg.lineno,
     hg.record_id,
     hg.item_id,
     u.t,
@@ -62,6 +63,7 @@ def get_doc (id)
     if !printed_header then
       printed_header = true;
       puts "file_path\t\t#{row[:file_path]}";
+      puts "lineno\t\t#{row[:lineno]}";      
       puts "record_id\t\t#{row[:record_id]}";
       puts "item_id\t\t#{row[:item_id] || 'NULL'}";
     end
