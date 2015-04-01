@@ -14,7 +14,7 @@ require 'zlib';
 # Will transparently handle .gz extension.
 
 @@spec = {
-  '001'  => 'record_id',
+  '001'  => '001',
   '010a' => 'lccn',
   '022a' => 'issn',
   '035a' => 'oclc',

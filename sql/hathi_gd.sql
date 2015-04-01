@@ -47,8 +47,8 @@ drop table if exists hathi_title;
 
 drop table if exists hathi_str;
 drop table if exists hathi_related;
-drop table if exists hathi_input_file;
 drop table if exists hathi_gd;
+drop table if exists hathi_input_file;
 
 -- Keep track of files used as input.
 -- PK is used as FK in hathi_gd, to ensure that
