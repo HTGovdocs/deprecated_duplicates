@@ -17,7 +17,7 @@ junk_rx    = /[,:;\.\-\(\)\[\]\{\}<>\|\$!"'#\*\+\/\\]/;
 # Find any length of spaces (so we can replace with a single space)
 space_rx   = / +/;
 # 'for sale by' and anything that follows, so we can remove it.
-forsale_rx = /for sale by.+/i;
+forsale_rx = /for sale by.+/;
 # if we cant find a single a-z, then it can't be a thing.
 az_rx      = /[a-z]/;
 
@@ -27,12 +27,12 @@ HTPH::Hathidata.read(ARGV.shift) do |line|
   imprint  = cols[12];
   original = "#{imprint}";
 
+  imprint.downcase!;
   imprint.gsub!(pubdate_rx, '');
   imprint.gsub!(junk_rx,    ' ');
   imprint.gsub!(forsale_rx, '');
   imprint.gsub!(space_rx,   ' ');
   imprint.strip!;
-  imprint.downcase!;
   next if imprint !~ az_rx;
 
   if gd == '1'
