@@ -1,3 +1,4 @@
+require 'htph';
 require 'json';
 require 'logger';
 require 'traject';
@@ -13,22 +14,9 @@ require 'zlib';
 # Add 'aleph' as commandline argument if you want to use Traject::AlephSequentialReader
 # Will transparently handle .gz extension.
 
-@@spec = {
-  '001'  => '001',
-  '010a' => 'lccn',
-  '022a' => 'issn',
-  '035a' => 'oclc',
-  '086'  => 'sudoc',
-  '110'  => 'publisher',
-  '245a' => 'title',
-  '245b' => 'title',
-  '246a' => 'title',
-  '246b' => 'title',
-  '260b' => 'publisher',
-  '260c' => 'pubdate',
-  '264'  => 'publisher',
-  '710'  => 'publisher',
-};
+@@spec = {};
+@@item_id_tag = nil;
+@@enumc_tag   = nil;
 
 # Without this we can't parse zephir_full_* files, which have a FMT in them.
 MARC::ControlField.control_tags.delete('FMT');
@@ -37,7 +25,7 @@ class HathiMarcReader
   def main
     @reader.each_with_index do |marcrecord,i| # Marc::Record
       out = {'infile' => @infile, 'lineno' => i}; # 1 json line per marc record
-      holdings = []; # The holdings (pairs of 974u and z), if any.
+      holdings = []; # The holdings (pairs of item_id and enumc), if any.
       marcrecord.fields.each do |f| # MARC::DataField
         holding = {};
         if f.class == MARC::DataField then
@@ -47,11 +35,11 @@ class HathiMarcReader
             if !@@spec.has_key?(tagsub) then
               tagsub = f.tag + subfield.code; # e.g. 260c
             end
-            if tagsub =~ /^974[uz]$/ then
+            if (tagsub == @@item_id_tag || tagsub == @@enumc_tag) then
               # Special case: holdings. Always look for no matter what @@spec says.
               holding[tagsub] = strip_val(subfield.value);
               # Add to holdings if we have both u and z.
-              if holding.has_key?('974u') && holding.has_key?('974z') then
+              if holding.has_key?(@@item_id_tag) && holding.has_key?(@@enumc_tag) then
                 holdings << holding;
                 holding = {};
               end
@@ -99,8 +87,8 @@ class HathiMarcReader
           puts out.to_json;
         else
           holdings.each do |h|
-            out['item_id'] = {'974u' => h['974u']};
-            out['enumc']   = {'974z' => h['974z']};
+            out['item_id'] = {@@item_id_tag => h[@@item_id_tag]};
+            out['enumc']   = {@@enumc_tag   => h[@@enumc_tag]};
             puts out.to_json;
           end
         end
@@ -141,6 +129,26 @@ def check_gz (file_path)
   return File.new(file_path);
 end
 
+def load_profile (profile)
+  profile.gsub!(/^profile=/, '');
+  STDERR.puts "Loading @@spec with contents of #{profile}...";
+  HTPH::Hathidata.read(profile) do |line|
+    if line =~ /.+\t.+/ then
+      (tag,label) = line.strip.split("\t");
+      if tag =~ /^\d{3}[a-z]?$/ then
+        if label == 'item_id' then
+          @@item_id_tag = tag;
+        elsif label == 'enumc' then
+          @@enumc_tag = tag;
+        else
+          @@spec[tag] = label;
+        end
+        STDERR.puts line;
+      end
+    end
+  end
+end
+
 if __FILE__ == $0 then
   hmr = nil;
   aleph = false;
@@ -148,6 +156,14 @@ if __FILE__ == $0 then
     ARGV.delete('aleph');
     aleph = true;
   end
+
+  # Get a marc profile (which field has title, which has enumc, etc).
+  # If none given, use data/marc_profiles/default.tsv
+  # Populates @@spec, @@item_id_tag, @@enumc_tag.
+  profile = ARGV.find{|x| x =~ /profile=.+/} || 'marc_profiles/default.tsv';
+  load_profile(profile);
+  ARGV.delete(profile);
+
   ARGV.each do |arg|
     if aleph then
       hmr = AlephReader.new(arg);
