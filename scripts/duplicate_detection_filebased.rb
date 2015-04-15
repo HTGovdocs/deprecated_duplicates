@@ -82,6 +82,7 @@ def run
   q_get_values = @conn.prepare(sql_get_values);
 
   seen  = {};
+  # Assuming 1 id per line
   hdin  = HTPH::Hathidata::Data.new(@infile).open('r');
   hdout = HTPH::Hathidata::Data.new('related_ids_by_hash.dat').open('w');
   hdin_chunk = [];
