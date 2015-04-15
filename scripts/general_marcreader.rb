@@ -25,9 +25,9 @@ class HathiMarcReader
   def main
     @reader.each_with_index do |marcrecord,i| # Marc::Record
       out = {'infile' => @infile, 'lineno' => i}; # 1 json line per marc record
-      holdings = []; # The holdings (pairs of item_id and enumc), if any.
+      holding  = {}; # A single holding, goes into holdings ...
+      holdings = []; # ... the holdings (pairs of item_id and enumc), if any.
       marcrecord.fields.each do |f| # MARC::DataField
-        holding = {};
         if f.class == MARC::DataField then
           f.subfields.each do |subfield| # MARC::SubField
             tagsub = f.tag; # e.g. 260, use if in @@spec, otherwise add subfield.
@@ -38,7 +38,7 @@ class HathiMarcReader
             if (tagsub == @@item_id_tag || tagsub == @@enumc_tag) then
               # Special case: holdings. Always look for no matter what @@spec says.
               holding[tagsub] = strip_val(subfield.value);
-              # Add to holdings if we have both u and z.
+              # Add to holdings if we have both enumc and item_id.
               if holding.has_key?(@@item_id_tag) && holding.has_key?(@@enumc_tag) then
                 holdings << holding;
                 holding = {};
