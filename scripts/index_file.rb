@@ -112,7 +112,10 @@ def run (hdin)
     file_id   = get_infile_id(infile)
     lineno    = line_json['lineno'];
     hashsum   = @sha_digester.hexdigest(line);
-    rec_id    = line_json['record_id'].first.values.first;
+    rec_id    = 'N/A';
+    if !line_json['record_id'].nil? then
+      rec_id  = line_json['record_id'].first.values.first;
+    end
 
     if !line_json['item_id'].nil? then
       item_id = line_json['item_id'].values.first;
