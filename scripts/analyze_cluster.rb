@@ -16,6 +16,7 @@ def main
   }.join("\nUNION\n");
 
   @union_q = conn.prepare(union_sql);
+  # File with ^(cluster|solo)\t\d+(,(\d+,)\d*)$ on each line
   hdin   = HTPH::Hathidata::Data.new(ARGV.shift).open('r');
   @solos = HTPH::Hathidata::Data.new("solos_$ymd.tsv").open('w');
   @rels  = HTPH::Hathidata::Data.new("related_$ymd.tsv").open('w');
