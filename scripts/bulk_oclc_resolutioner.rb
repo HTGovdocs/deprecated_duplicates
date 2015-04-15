@@ -23,12 +23,12 @@ map_sql    = %W[
         WHERE x.oclc IN(#{x_qmarks.join(',')})
     ) AS z GROUP BY a
 ].join(" ");
-@map_query = conn.prepare(map_sql);
 
-@get_str_ids_query  = conn.prepare("SELECT str, id FROM hathi_str WHERE str IN (#{x_qmarks.join(',')})");
-@insert_str_query   = conn.prepare("INSERT INTO hathi_str (str) VALUES (?)");
-@last_id_query      = conn.prepare("SELECT LAST_INSERT_ID() AS id");
-@count_oclcs_query  = conn.prepare("SELECT COUNT(DISTINCT str_id) AS c FROM hathi_oclc");
+@map_query         = conn.prepare(map_sql);
+@get_str_ids_query = conn.prepare("SELECT str, id FROM hathi_str WHERE str IN (#{x_qmarks.join(',')})");
+@insert_str_query  = conn.prepare("INSERT INTO hathi_str (str) VALUES (?)");
+@last_id_query     = conn.prepare("SELECT LAST_INSERT_ID() AS id");
+@count_oclcs_query = conn.prepare("SELECT COUNT(DISTINCT str_id) AS c FROM hathi_oclc");
 
 log.d("Getting a before-count on hathi_oclc...");
 before_count = 0;
@@ -91,8 +91,8 @@ end
 log.d("Generating loadfile for temp table");
 tmp_table_data = HTPH::Hathidata::Data.new('tmp_oclc.dat').open('w');
 oclc_map.keys.each do |k|
-  old_oclc = k.to_s;
-  new_oclc = oclc_map[k].to_s;
+  old_oclc   = k.to_s;
+  new_oclc   = oclc_map[k].to_s;
   old_str_id = old_oclc_to_str_id_map[old_oclc];
   new_str_id = new_oclc_to_str_id_map[new_oclc];
   tmp_table_data.file.puts([old_str_id, new_str_id].join("\t"));
