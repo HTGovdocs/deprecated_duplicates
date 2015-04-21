@@ -107,18 +107,21 @@ def run (hdin)
 
     gd_id     = nil;
     item_id   = nil;
-    line_json = JSON.parse(line);
-    infile    = line_json['infile'];
+    line_hash = JSON.parse(line);
+
+    infile    = line_hash['infile'];
     file_id   = get_infile_id(infile)
-    lineno    = line_json['lineno'];
-    hashsum   = @sha_digester.hexdigest(line);
+    # We don't want to include lineno in digest, so we delete.
+    lineno    = line_hash.delete('lineno');
+    
+    hashsum   = @sha_digester.hexdigest(line_hash.to_json);
     rec_id    = 'N/A';
-    if !line_json['record_id'].nil? then
-      rec_id  = line_json['record_id'].first.values.first;
+    if !line_hash['record_id'].nil? then
+      rec_id  = line_hash['record_id'].first.values.first;
     end
 
-    if !line_json['item_id'].nil? then
-      item_id = line_json['item_id'].values.first;
+    if !line_hash['item_id'].nil? then
+      item_id = line_hash['item_id'].values.first;
     end
 
     if rec_id.nil? then
@@ -142,7 +145,7 @@ def run (hdin)
       end
     end
     # If we got an ID, proceed to insert the rest.
-    insert_line(line_json, gd_id);
+    insert_line(line_hash, gd_id);
   end
   hdin.close();
 
