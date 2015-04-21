@@ -67,8 +67,13 @@ class HathiMarcReader
           out['oclc'] = out['oclc'].map do |h|
             k = h.keys.first;
             v = h[k];
-            o = Traject::Macros::Marc21Semantics.oclcnum_extract(v);
-            o.nil? ? nil : {k => o};
+            if v =~ /^\d+$/ then
+              # oclcnum_extract returns nil if there are no prefixes, so we have to let the pure numbers go first.
+              {k => v};
+            else
+              o = Traject::Macros::Marc21Semantics.oclcnum_extract(v);
+              o.nil? ? nil : {k => o};
+            end
           end.compact;
         end
 
@@ -143,9 +148,12 @@ def load_profile (profile)
         else
           @@spec[tag] = label;
         end
-        STDERR.puts line;
       end
     end
+  end
+  STDERR.puts "@@spec:";
+  @@spec.keys.sort.each do |k|
+    STDERR.puts "#{k}\t#{@@spec[k]}";
   end
 end
 
