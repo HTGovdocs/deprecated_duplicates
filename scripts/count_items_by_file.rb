@@ -18,10 +18,13 @@ sql = %w[
 ].join(' ');
 
 print_header = true;
+total = 0;
 conn.enumerate(sql) do |row|
   if print_header then
     puts row.to_h.keys.join("\t");
     print_header = false;
   end
+  total += row[:c].to_i;
   puts row.to_a.join("\t");
 end
+puts "Total:\t#{total}";
