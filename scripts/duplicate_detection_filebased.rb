@@ -5,6 +5,7 @@ require 'set';
 # Nota Bene, output of this here script should be passed through `sort -u`.
 
 db    = HTPH::Hathidb::Db.new();
+@log  = HTPH::Hathilog::Log.new(); 
 @conn = db.get_conn();
 @qmarks_a = ['?'] * 2500;
 @qmarks   = @qmarks_a.join(',');
@@ -14,7 +15,7 @@ def run
   # Clean the table of related ids.
   sql_delete_related = "DELETE FROM hathi_related";
   q_delete_related   = @conn.prepare(sql_delete_related);
-  STDERR.puts sql_delete_related;
+  @log.d(sql_delete_related);
   q_delete_related.execute();
 
   # Get related ids and the checksum of the things that make them related.
@@ -103,7 +104,7 @@ def run
   hdout.close();
   hdin.close();
 
-  STDERR.puts sql_load_related;
+  @log.d(sql_load_related);
   q_load_related.execute(hdout.path);
 
   # Loop over checksums that are known to have 2+ ids.
@@ -198,6 +199,7 @@ def run
     end
     puts "#{rel}\t#{score(ids_clone)}\t#{ids_clone.join(',')}";
   end
+  @log.d("Done");
 end
 
 # Copied from analyze_cluster. They should be the same.
