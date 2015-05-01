@@ -29,7 +29,6 @@ def setup ()
   @input_insert_q    = @conn.prepare(input_insert_sql);
 
   @sha_digester = Digest::SHA256.new();
-  @log          = HTPH::Hathilog::Log.new({:file_name => 'hathi_indexing.log'});
 
   @loadfiles = {}; # Write tab-delim data, and when all is done, load into table.
   %w[isbn issn lccn oclc title enumc pubdate publisher sudoc].each do |suffix|
@@ -88,7 +87,7 @@ end
 def run (hdin)
   i    = 0;
   dups = 0;
-
+  puts "Reading from #{hdin.path}";
   @loadfiles.values.each do |hdout|
     hdout.open('w');
   end
@@ -269,7 +268,6 @@ def get_str_id (str)
   str = str[0..@max_str_len];
 
   if str == '' then
-    @log.w("Failing on #{str}");
     return str_id;
   end
 
@@ -302,10 +300,6 @@ def get_str_id (str)
   end
 
   @str_mem[str] = str_id.to_i;
-
-  if str_id.nil? then
-    @log.w("Failing on #{str}");
-  end
 
   return str_id.to_i;
 end
