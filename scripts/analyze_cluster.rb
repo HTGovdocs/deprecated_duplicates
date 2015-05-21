@@ -61,8 +61,8 @@ def analyze_cluster (ids)
     id_args = ([id] * @tables.size);
     @union_q.enumerate(*id_args) do |row|
       attr = row[:t];
-      val  = row[:str_id];
-      doc  = row[:gd_id];
+      val  = row[:str_id].to_i;
+      doc  = row[:gd_id].to_i;
       @doc_attr_vals[id][attr] ||= [];
       @doc_attr_vals[id][attr] << val;
     end
