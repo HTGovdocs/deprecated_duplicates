@@ -49,7 +49,7 @@ def main
       @set_to_item[set_id] = {};
       # For each attribute value, get docs with that value for that attribute.
       q_get_gd_ids.enumerate(str_id) do |gd_id_row|
-        gd_id = gd_id_row[:gd_id];
+        gd_id = gd_id_row[:gd_id].to_i;
         @set_to_item[set_id][gd_id] = 1;
         @item_to_set[gd_id]       ||= {};
         @item_to_set[gd_id][set_id] = 1;
