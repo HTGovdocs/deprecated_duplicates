@@ -17,16 +17,35 @@ require 'zlib';
 @@spec = {};
 @@item_id_tag = nil;
 @@enumc_tag   = nil;
+@@require_fu  = false;
 
 # Without this we can't parse zephir_full_* files, which have a FMT in them.
 MARC::ControlField.control_tags.delete('FMT');
 
 class HathiMarcReader
-  def main
+  def main ()
     @reader.each_with_index do |marcrecord,i| # Marc::Record
       out = {'infile' => @infile, 'lineno' => i}; # 1 json line per marc record
       holding  = {}; # A single holding, goes into holdings ...
       holdings = []; # ... the holdings (pairs of item_id and enumc), if any.
+
+      if @@require_fu then
+        # Throw out ones that aren't strictly us fed docs according to the 008.
+        oh_oh_eight = marcrecord.fields("008");
+        if oh_oh_eight.class == [].class then
+          if oh_oh_eight.size == 1 then
+            v = oh_oh_eight.first.value;
+            if v[17] != 'u' || v[28] != 'f' then
+              STDERR.puts "Record #{i} has a 008 that doesn't look like a us fed doc: [#{v[17]}#{v[28]}] in #{v}.";
+            end
+          else
+            STDERR.puts "Record #{i} has a weird number of 008s (#{oh_oh_eight.size}), skipping.";
+          end
+        else
+          STDERR.puts "Record #{i} has no 008, skipping."; 
+        end
+      end
+      
       marcrecord.fields.each do |f| # MARC::DataField
         if f.class == MARC::DataField then
           f.subfields.each do |subfield| # MARC::SubField
@@ -140,7 +159,7 @@ def load_profile (profile)
   HTPH::Hathidata.read(profile) do |line|
     if line =~ /.+\t.+/ then
       (tag,label) = line.strip.split("\t");
-      if tag =~ /^\d{3}[a-z]?$/ then
+      if tag =~ /^\d{3}[0-9a-z]?$/ then
         if label == 'item_id' then
           @@item_id_tag = tag;
         elsif label == 'enumc' then
@@ -160,9 +179,16 @@ end
 if __FILE__ == $0 then
   hmr = nil;
   aleph = false;
+
   if ARGV.include?('aleph') then
     ARGV.delete('aleph');
     aleph = true;
+  end
+
+  if ARGV.include?('require_fu') then
+    # If @@require_fu is true, then reject records that don't have f and u in the proper positions in the leader (008).
+    ARGV.delete('require_fu');
+    @@require_fu = true;
   end
 
   # Get a marc profile (which field has title, which has enumc, etc).
