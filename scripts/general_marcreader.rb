@@ -1,6 +1,7 @@
 require 'htph';
 require 'json';
 require 'logger';
+require 'threach';
 require 'traject';
 require 'traject/alephsequential_reader';
 require 'traject/macros/marc21';
@@ -18,34 +19,44 @@ require 'zlib';
 @@item_id_tag = nil;
 @@enumc_tag   = nil;
 @@require_fu  = false;
+@@logger      = HTPH::Hathilog::Log.new();
 
 # Without this we can't parse zephir_full_* files, which have a FMT in them.
 MARC::ControlField.control_tags.delete('FMT');
 
 class HathiMarcReader
   def main ()
-    @reader.each_with_index do |marcrecord,i| # Marc::Record
+    @reader.threach(4, :each_with_index) do |marcrecord,i|
+      # @reader.each_with_index do |marcrecord,i| # Marc::Record
       out = {'infile' => @infile, 'lineno' => i}; # 1 json line per marc record
       holding  = {}; # A single holding, goes into holdings ...
       holdings = []; # ... the holdings (pairs of item_id and enumc), if any.
 
+      # Get the 008.
+      field_008 = marcrecord.fields("008");
+      value_008 = nil;
+
+      if field_008.class == [].class then
+        if field_008.size == 1 then
+          value_008 = field_008.first.value;
+        else
+          @@logger.d("Record #{i} has a weird number of 008s (#{field_008.size}), skipping.");
+        end
+      else
+        @@logger.d("Record #{i} has no 008, skipping."); 
+      end
+
       if @@require_fu then
         # Throw out ones that aren't strictly us fed docs according to the 008.
-        oh_oh_eight = marcrecord.fields("008");
-        if oh_oh_eight.class == [].class then
-          if oh_oh_eight.size == 1 then
-            v = oh_oh_eight.first.value;
-            if v[17] != 'u' || v[28] != 'f' then
-              STDERR.puts "Record #{i} has a 008 that doesn't look like a us fed doc: [#{v[17]}#{v[28]}] in #{v}.";
-            end
-          else
-            STDERR.puts "Record #{i} has a weird number of 008s (#{oh_oh_eight.size}), skipping.";
-          end
-        else
-          STDERR.puts "Record #{i} has no 008, skipping."; 
+        if value_008[17] != 'u' || value_008[28] != 'f' then
+          @@logger.d("Record #{i} has a 008 that doesn't look like a us fed doc: [#{value_008[17]}#{value_008[28]}] in #{value_008}.");
         end
       end
-      
+
+      # Getting pubdate from 008.
+      pubdate = Traject::Macros::Marc21Semantics.publication_date(marcrecord);
+      out['pubdate'] = [{'008' => pubdate}];
+            
       marcrecord.fields.each do |f| # MARC::DataField
         if f.class == MARC::DataField then
           f.subfields.each do |subfield| # MARC::SubField
@@ -81,18 +92,13 @@ class HathiMarcReader
       end
       # Output json, if any.
       if !out.keys.empty? then
-        # Special filter for OCLC, because there are other, non-OCLC values, in 035a.
+        # Special for OCLC
         if out.has_key?('oclc') then
           out['oclc'] = out['oclc'].map do |h|
             k = h.keys.first;
             v = h[k];
-            if v =~ /^\d+$/ then
-              # oclcnum_extract returns nil if there are no prefixes, so we have to let the pure numbers go first.
-              {k => v};
-            else
-              o = Traject::Macros::Marc21Semantics.oclcnum_extract(v);
-              o.nil? ? nil : {k => o};
-            end
+            o = Traject::Macros::Marc21Semantics.oclcnum_extract(v);
+            o.nil? ? nil : {k => o};
           end.compact;
         end
 
@@ -127,13 +133,8 @@ end
 
 class JsonReader < HathiMarcReader
   def initialize (stream)
-    logger = Logger.new(STDERR);
-    logger.formatter = proc do |severity, datetime, progname, msg|
-      fileLine = caller(2)[4].split(':')[0,2].join(':');
-      "#{datetime} | #{fileLine} | #{severity} | #{msg}\n";
-    end
     @infile = stream;
-    @reader = Traject::NDJReader.new(check_gz(stream), {:logger => logger});
+    @reader = Traject::NDJReader.new(check_gz(stream), {:logger => @@logger});
     return self;
   end
 end
@@ -155,7 +156,7 @@ end
 
 def load_profile (profile)
   profile.gsub!(/^profile=/, '');
-  STDERR.puts "Loading @@spec with contents of #{profile}...";
+  @@logger.d("Loading @@spec with contents of #{profile}...");
   HTPH::Hathidata.read(profile) do |line|
     if line =~ /.+\t.+/ then
       (tag,label) = line.strip.split("\t");
@@ -170,9 +171,9 @@ def load_profile (profile)
       end
     end
   end
-  STDERR.puts "@@spec:";
+  @@logger.d("@@spec:");
   @@spec.keys.sort.each do |k|
-    STDERR.puts "#{k}\t#{@@spec[k]}";
+    @@logger.d("#{k}\t#{@@spec[k]}");
   end
 end
 
