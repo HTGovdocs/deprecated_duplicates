@@ -1,40 +1,33 @@
 use ht_repository;
 
 -- Dropping indexes
-drop index hathi_gd_str on hathi_str;
-drop index hathi_record on hathi_gd;
-drop index related_checksum on hathi_related;
-drop index related_gd_id on hathi_related;
-
-drop index hathi_sudoc_gd_id  on hathi_sudoc;
-drop index hathi_sudoc_str_id on hathi_sudoc;
-
-drop index hathi_publisher_gd_id  on hathi_publisher;
-drop index hathi_publisher_str_id on hathi_publisher;
-
-drop index hathi_pubdate_gd_id  on hathi_pubdate;
-drop index hathi_pubdate_str_id on hathi_pubdate;
-
-drop index hathi_enumc_gd_id  on hathi_enumc;
-drop index hathi_enumc_str_id on hathi_enumc;
-
-drop index hathi_title_gd_id  on hathi_title;
-drop index hathi_title_str_id on hathi_title;
-
-drop index hathi_isbn_gd_id  on hathi_isbn;
-drop index hathi_isbn_str_id on hathi_isbn;
-
-drop index hathi_issn_gd_id  on hathi_issn;
-drop index hathi_issn_str_id on hathi_issn;
-
-drop index hathi_lccn_gd_id  on hathi_lccn;
-drop index hathi_lccn_str_id on hathi_lccn;
-
-drop index hathi_oclc_gd_id  on hathi_oclc;
-drop index hathi_oclc_str_id on hathi_oclc;
-
+drop index hathi_gd_str              on hathi_str;
+drop index hathi_record 	     on hathi_gd;
+drop index related_checksum 	     on hathi_related;
+drop index related_gd_id 	     on hathi_related;
+drop index hathi_sudoc_gd_id  	     on hathi_sudoc;
+drop index hathi_sudoc_str_id 	     on hathi_sudoc;
+drop index hathi_publisher_gd_id     on hathi_publisher;
+drop index hathi_publisher_str_id    on hathi_publisher;
+drop index hathi_pubdate_gd_id       on hathi_pubdate;
+drop index hathi_pubdate_str_id      on hathi_pubdate;
+drop index hathi_enumc_gd_id  	     on hathi_enumc;
+drop index hathi_enumc_str_id 	     on hathi_enumc;
+drop index hathi_enumc_parsed_gd_id  on hathi_enumc_parsed;
+drop index hathi_enumc_parsed_str_id on hathi_enumc_parsed;
+drop index hathi_title_gd_id  	     on hathi_title;
+drop index hathi_title_str_id 	     on hathi_title;
+drop index hathi_isbn_gd_id  	     on hathi_isbn;
+drop index hathi_isbn_str_id 	     on hathi_isbn;
+drop index hathi_issn_gd_id  	     on hathi_issn;
+drop index hathi_issn_str_id 	     on hathi_issn;
+drop index hathi_lccn_gd_id  	     on hathi_lccn;
+drop index hathi_lccn_str_id 	     on hathi_lccn;
+drop index hathi_oclc_gd_id  	     on hathi_oclc;
+drop index hathi_oclc_str_id 	     on hathi_oclc;
 
 -- Drop existing tables.
+drop table if exists hathi_enumc_parsed;
 drop table if exists hathi_enumc;
 drop table if exists hathi_isbn;
 drop table if exists hathi_issn;
@@ -44,7 +37,6 @@ drop table if exists hathi_pubdate;
 drop table if exists hathi_publisher;
 drop table if exists hathi_sudoc;
 drop table if exists hathi_title;
-
 drop table if exists hathi_str;
 drop table if exists hathi_related;
 drop table if exists hathi_gd;
@@ -57,6 +49,7 @@ create table hathi_input_file (
   id        INT          not null auto_increment,
   file_path VARCHAR(200) not null,
   date_read DATETIME     not null,
+  marc_profile VARCHAR(200) null default null,
   primary key (id)
 );
 
@@ -67,7 +60,7 @@ create table hathi_gd (
   file_id   INT         not null, -- The file we got the record from
   lineno    INT         not null, -- The line in the input file where we got the record.
   record_id VARCHAR(50) not null, -- Whatever the unique id is of the base record in the file.
-  item_id  VARCHAR(50)  null,     -- If the record has holdings, the id of the item.
+  item_id   VARCHAR(50) null,     -- If the record has holdings, the id of the item.
   hashsum   CHAR(64)    not null unique,
   primary key (id),
   foreign key (file_id) references hathi_input_file(id)
@@ -136,6 +129,16 @@ create table hathi_enumc (
   foreign key (str_id) references hathi_str(id)
 );
 
+create table hathi_enumc_parsed (
+  gd_id  INT not null,
+  str_id INT not null,
+  parsed TEXT null,     -- json hash or whatever, based on current best ec-parser
+  normalized TEXT null, -- normalized string version, based on current best normalization
+  primary key (gd_id, str_id),     
+  foreign key (gd_id) references hathi_gd(id),
+  foreign key (str_id) references hathi_str(id)
+);
+
 create table hathi_pubdate (
   gd_id  INT not null,
   str_id INT not null,
@@ -170,34 +173,27 @@ create table hathi_related (
   foreign key (gd_id) references hathi_gd(id)
 );
 
-create index hathi_gd_str on hathi_str (str) using btree;
-create index hathi_record on hathi_gd (record_id) using btree;
-create index related_checksum on hathi_related (checksum) using hash;
-create index related_gd_id on hathi_related (gd_id) using btree;
-
-create index hathi_sudoc_gd_id  on hathi_sudoc (gd_id)  using btree;
-create index hathi_sudoc_str_id on hathi_sudoc (str_id) using btree;
-
-create index hathi_publisher_gd_id  on hathi_publisher (gd_id)  using btree;
-create index hathi_publisher_str_id on hathi_publisher (str_id) using btree;
-
-create index hathi_pubdate_gd_id  on hathi_pubdate (gd_id)  using btree;
-create index hathi_pubdate_str_id on hathi_pubdate (str_id) using btree;
-
-create index hathi_enumc_gd_id  on hathi_enumc (gd_id)  using btree;
-create index hathi_enumc_str_id on hathi_enumc (str_id) using btree;
-
-create index hathi_title_gd_id  on hathi_title (gd_id)  using btree;
-create index hathi_title_str_id on hathi_title (str_id) using btree;
-
-create index hathi_isbn_gd_id  on hathi_isbn (gd_id)  using btree;
-create index hathi_isbn_str_id on hathi_isbn (str_id) using btree;
-
-create index hathi_issn_gd_id  on hathi_issn (gd_id)  using btree;
-create index hathi_issn_str_id on hathi_issn (str_id) using btree;
-
-create index hathi_lccn_gd_id  on hathi_lccn (gd_id)  using btree;
-create index hathi_lccn_str_id on hathi_lccn (str_id) using btree;
-
-create index hathi_oclc_gd_id  on hathi_oclc (gd_id)  using btree;
-create index hathi_oclc_str_id on hathi_oclc (str_id) using btree;
+create index hathi_gd_str              on hathi_str (str)             using btree;
+create index hathi_record 	       on hathi_gd (record_id) 	      using btree;
+create index related_checksum	       on hathi_related (checksum)    using hash;
+create index related_gd_id 	       on hathi_related (gd_id)       using btree;
+create index hathi_sudoc_gd_id         on hathi_sudoc (gd_id)  	      using btree;
+create index hathi_sudoc_str_id        on hathi_sudoc (str_id) 	      using btree;
+create index hathi_publisher_gd_id     on hathi_publisher (gd_id)     using btree;
+create index hathi_publisher_str_id    on hathi_publisher (str_id)    using btree;
+create index hathi_pubdate_gd_id       on hathi_pubdate (gd_id)       using btree;
+create index hathi_pubdate_str_id      on hathi_pubdate (str_id)      using btree;
+create index hathi_enumc_gd_id         on hathi_enumc (gd_id)  	      using btree;
+create index hathi_enumc_str_id        on hathi_enumc (str_id) 	      using btree;
+create index hathi_enumc_parsed_gd_id  on hathi_enumc_parsed (gd_id)  using btree;
+create index hathi_enumc_parsed_str_id on hathi_enumc_parsed (str_id) using btree;
+create index hathi_title_gd_id         on hathi_title (gd_id)  	      using btree;
+create index hathi_title_str_id        on hathi_title (str_id) 	      using btree;
+create index hathi_isbn_gd_id  	       on hathi_isbn (gd_id)  	      using btree;
+create index hathi_isbn_str_id 	       on hathi_isbn (str_id) 	      using btree;
+create index hathi_issn_gd_id  	       on hathi_issn (gd_id)  	      using btree;
+create index hathi_issn_str_id 	       on hathi_issn (str_id) 	      using btree;
+create index hathi_lccn_gd_id  	       on hathi_lccn (gd_id)  	      using btree;
+create index hathi_lccn_str_id 	       on hathi_lccn (str_id) 	      using btree;
+create index hathi_oclc_gd_id  	       on hathi_oclc (gd_id)  	      using btree;
+create index hathi_oclc_str_id 	       on hathi_oclc (str_id) 	      using btree;
