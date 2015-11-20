@@ -15,13 +15,13 @@ log.d("Prepping queries");
 
 @get_oclcs_query = conn.prepare("SELECT DISTINCT ho.str_id, hs.str AS oclc FROM hathi_oclc AS ho JOIN hathi_str AS hs ON (ho.str_id = hs.id) ORDER BY oclc");
 
-map_sql    = %W[
-    SELECT z.a, MIN(z.b) AS min_b FROM (
-        SELECT DISTINCT CAST(x.oclc AS UNSIGNED) AS a, CAST(y.oclc AS UNSIGNED) AS b
-        FROM holdings_htitem_oclc AS x
-        JOIN holdings_htitem_oclc AS y ON (x.volume_id = y.volume_id)
-        WHERE x.oclc IN(#{x_qmarks.join(',')})
-    ) AS z GROUP BY a
+map_sql = %W[
+  SELECT z.a, MIN(z.b) AS min_b FROM (
+    SELECT DISTINCT CAST(x.oclc AS UNSIGNED) AS a, CAST(y.oclc AS UNSIGNED) AS b
+    FROM holdings_htitem_oclc AS x
+    JOIN holdings_htitem_oclc AS y ON (x.volume_id = y.volume_id)
+    WHERE x.oclc IN(#{x_qmarks.join(',')})
+  ) AS z GROUP BY a
 ].join(" ");
 
 @map_query         = conn.prepare(map_sql);
