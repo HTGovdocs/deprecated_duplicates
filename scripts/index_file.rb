@@ -121,12 +121,16 @@ def run (hdin)
 
     if !line_hash['item_id'].nil? then
       item_id = line_hash['item_id'].values.first;
+      if item_id.size > 50 then
+        # Make sure we fit in the column.
+        item_id = item_id[0..49];
+      end
     end
 
-    if rec_id.nil? then
-      puts "bad line, no rec_id:\n#{line}";
-      next;
-    end
+    # if rec_id.nil? then
+    #  puts "bad line, no rec_id:\n#{line}";
+    #  next;
+    # end
 
     # Get an ID.
     begin
