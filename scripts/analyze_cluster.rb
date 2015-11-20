@@ -4,6 +4,10 @@ require 'htph';
 # For each cluster there, break it apart on the things they actually all have in common.
 # For each resulting set, say that its members are related, and then look for duplicates inside.
 
+# Call like:
+#  bundle exec ruby -J-Xmx10g scripts/analyze_cluster.rb merged_yyyymmdd.tsv
+# Needs a lot of ram if there are millions of items in +100K of clusters.
+
 def main
   db = HTPH::Hathidb::Db.new();
   conn = db.get_conn();
@@ -16,6 +20,8 @@ def main
   }.join("\nUNION\n");
 
   @union_q = conn.prepare(union_sql);
+  @ping_q  = conn.prepare("SELECT 1");
+  @ping_t  = Time.new();
   # File with ^(cluster|solo)\t\d+(,(\d+,)\d*)$ on each line
   hdin   = HTPH::Hathidata::Data.new(ARGV.shift).open('r');
   @solos = HTPH::Hathidata::Data.new("solos_$ymd.tsv").open('w');
@@ -26,44 +32,52 @@ def main
   # Any bigger than this and we can't even.
   cluster_max_size = 25000;
 
-  catch :outer do
-    hdin.file.each_line do |line|
-      i += 1;
-      if i % 1000 == 0 then
-        @log.d(i);
+  # Go through input file
+  hdin.file.each_line do |line|
+
+    next if line !~ /^(solo|cluster)\t/;
+
+    line.strip!;
+    (type, idstr) = line.split("\t");
+    ids = idstr.nil? ? [] : idstr.split(',').map{|x| x.to_i};
+    i += 1;
+    # if i % 1000 == 0 then
+    @log.d("input line #{i} has #{ids.size} ids");
+    # end
+
+    if type == 'cluster' then     
+      if ids.size > cluster_max_size then
+        # This is too big. We have to deal with them differently.
+        @huge.file.puts(line);
+      else
+        # This is where we actually look closer.
+        analyze_cluster(ids);
       end
-      line.strip!;
-      (type, idstr) = line.split("\t");
-      if type == 'cluster' then
-        ids = idstr.split(',');
-        if ids.size > cluster_max_size then
-          # This is too big. We have to deal with them differently.
-          @huge.file.puts(line);
-        else
-          analyze_cluster(ids);
-        end
-      elsif type == 'solo' then
-        @solos.file.puts(line);
-      end
+    elsif type == 'solo' then
+      # Just put solos in solo file.
+      @solos.file.puts(line);
     end
-    hdin.close();
-    [@solos, @rels, @dups, @huge].each do |f|
-      f.close();
-    end
+  end
+  hdin.close();
+  [@solos, @rels, @dups, @huge].each do |f|
+    f.close();
   end
 end
 
 def analyze_cluster (ids)
   # 2d hash where [doc + attr] -> vals
+  # Refresh for each cluster.
   @doc_attr_vals = {};
   ids.each do |id|
     @doc_attr_vals[id] = {};
     id_args = ([id] * @tables.size);
+    # Look up all the attribute values for each id in the ids array.
     @union_q.enumerate(*id_args) do |row|
       attr = row[:t];
       val  = row[:str_id].to_i;
       doc  = row[:gd_id].to_i;
       @doc_attr_vals[id][attr] ||= [];
+      # Remember that doc 555 has title = 123.
       @doc_attr_vals[id][attr] << val;
     end
     if @doc_attr_vals.keys.size % 1000 == 0 then
@@ -73,7 +87,6 @@ def analyze_cluster (ids)
 
   skip    = [];
   related = [];
-  subsets = [];
 
   # Get related subset(s).
   get_related(ids, skip, related);
@@ -82,23 +95,30 @@ def analyze_cluster (ids)
   related.each_with_index do |x,i|
     related.each_with_index do |y,j|
       next if i >= j;
+      next if x.empty?;
+      next if y.empty?;
       if (x - y).empty? then
-        # Each set which is a subset of another is marked for deletion.
-        subsets << x;
+        # Each set which is a subset of another is to be forgotten.
+        # I.e. if we have {a,b,c,d,e}, {a,b} and {c,d} then forget {a,b} and {c,d}
+        if Time.new() - @ping_t > 1 then
+          # Don't ping more than once per second.
+          @ping_t = Time.new();
+          @ping_q.enumerate do |x|
+            @log.d("Ping!");
+          end
+        end
+        x = [];
       end
     end
   end
 
-  subsets.each do |s| # Delete subsets.
-    related.delete(s);
-  end
-
   related.each do |r|
+    next if r.empty?;
     # Print related to file.
     @rels.file.puts("related\t#{r.join(',')}");
     # Now let's get out the ones that are dups from each set.
     get_duplicates(r).each do |d|
-      # Print dups to file.
+      # Print dups to file, with score.
       s = score(d);
       @dups.file.puts("duplicates\t#{s}\t#{d.join(',')}");
     end
@@ -107,22 +127,25 @@ end
 
 def get_related (ids, skip, related)
   if ids.size <= 1 then
-    # puts "No point in looking at a single id. (#{ids.first})";
+    # No point in looking for related ids if given a single id.
     return nil;
   end
 
+  @ping_q.enumerate do |x|
+    @log.d("Ping!");
+  end
   attrs       = %w[oclc sudoc lccn issn title];
   attrs_order = attrs - skip;
 
   # build up a different 2d hash where [attr + val] -> docs
   attr_val_docs = {};
   ids.each do |doc|
-    # memoize this?
     @doc_attr_vals[doc].keys.each do |attr|
       @doc_attr_vals[doc][attr].each do |val|
         attr_val_docs[attr]         ||= {};
         attr_val_docs[attr][val]    ||= {};
-        attr_val_docs[attr][val][doc] = 1;
+        # Remember that title=123 occurs in document 555
+        attr_val_docs[attr][val][doc] = true;
       end
     end
   end
@@ -133,7 +156,7 @@ def get_related (ids, skip, related)
   attr_val_docs.keys.each do |attr|
     next if attr == 'enumc';
     attr_val_docs[attr].keys.each do |val|
-      if  attr_val_docs[attr][val].keys.size == 1 then
+      if attr_val_docs[attr][val].keys.size == 1 then
         # puts "#{attr} #{val} #{attr_val_docs[attr][val].keys} is just one, remove.";
         attr_val_docs[attr].delete(val);
       end
@@ -154,10 +177,12 @@ def get_related (ids, skip, related)
           key_size = attr_val_docs[attr][val].keys.size;
           # puts "check #{attr}, #{key_size} == #{ids.size}?";
           if key_size == ids.size then
+            # This is something that they all have in common, stop looking.
             common = attr;
             skip << common;
             throw :b0rk;
           elsif key_size > biggest_key_size then
+            # This is the thing that most (so far) docs have in common.
             biggest_key_attr = attr;
             biggest_key_val  = val;
             biggest_key_size = key_size;
@@ -171,6 +196,7 @@ def get_related (ids, skip, related)
     if biggest_key_size == 0 then
       # puts "Nothing in common!";
     else
+      # The biggest key is the thing that most docs have in common.
       # puts "biggest key was #{biggest_key_attr} #{biggest_key_val}, shared by #{attr_val_docs[biggest_key_attr][biggest_key_val].keys.join(',')}";
       biggest_key_ids = attr_val_docs[biggest_key_attr][biggest_key_val].keys;
       remaining_ids   = ids - biggest_key_ids;
@@ -188,11 +214,19 @@ end
 def get_duplicates (ids)
   enumc_doc  = {};
   duplicates = [];
-  ids.each do |doc|
+
+  # At this point we know that the cluster has a bunch of things in common.
+  # So really, it's just a matter of checking enumcs.
+
+  @ping_q.enumerate do |x|
+    @log.d("Ping!");
+  end
+
+  ids.each do |doc|    
     @doc_attr_vals[doc]['enumc'] ||= [nil];
     @doc_attr_vals[doc]['enumc'].each do |val|
       enumc_doc[val]    ||= {};
-      enumc_doc[val][doc] = 1;
+      enumc_doc[val][doc] = true;
     end
   end
   enumc_doc.keys.each do |enumc|
