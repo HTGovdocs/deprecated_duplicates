@@ -51,3 +51,9 @@ all_gds.each_slice(delete_chunk_size) do |chunk|
   q_args  = [chunk, padding].flatten;
   main_table_delete_q.execute(*q_args);
 end
+
+# Now, presumably, we should be able to remove the file as well.
+del_file_sql = "DELETE FROM hathi_input_file WHERE id = ?";
+puts del_file_sql;
+del_file_q   = conn.prepare(del_file_sql);
+del_file_q.execute(file_id);
