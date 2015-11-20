@@ -43,7 +43,11 @@ def main
       # But is it safe to just skip them? We might actually lose some docs between the cracks.
       # For now, just skip. If we get clusters in the 100K size, then we'll run out of memory.
       next if j <= ignore_top_x;
-      @log.d(j) if j % 50000 == 0;
+
+      if j % 50000 == 0 then
+        @log.d(j);
+      end
+
       str_id = str_id_row[:str_id];
       set_id = "#{i}_#{str_id}";
       @set_to_item[set_id] = {};
