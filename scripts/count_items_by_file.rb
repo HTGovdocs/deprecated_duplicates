@@ -7,14 +7,14 @@ sql = %w[
   SELECT
     hif.id,
     hif.file_path,
-    hif.date_read,
+    DATE_FORMAT(hif.date_read, "%y-%m-%d %T") AS t,
     COUNT(hg.id) AS c
   FROM
   hathi_input_file AS hif
     LEFT JOIN
     hathi_gd AS hg ON (hif.id = hg.file_id)
   GROUP BY hif.file_path, hif.date_read
-  ORDER BY c DESC;
+  ORDER BY t ASC, c DESC;
 ].join(' ');
 
 print_header = true;
