@@ -25,8 +25,9 @@ require 'zlib';
 MARC::ControlField.control_tags.delete('FMT');
 
 class HathiMarcReader
+  attr_accessor :infile;
   def main ()
-    @reader.threach(4, :each_with_index) do |marcrecord,i|
+    @reader.each_with_index do |marcrecord,i|
       # @reader.each_with_index do |marcrecord,i| # Marc::Record
       out = {'infile' => @infile, 'lineno' => i}; # 1 json line per marc record
       holding  = {}; # A single holding, goes into holdings ...
@@ -43,7 +44,7 @@ class HathiMarcReader
           @@logger.d("Record #{i} has a weird number of 008s (#{field_008.size}), skipping.");
         end
       else
-        @@logger.d("Record #{i} has no 008, skipping."); 
+        @@logger.d("Record #{i} has no 008, skipping.");
       end
 
       if @@require_fu then
@@ -56,7 +57,7 @@ class HathiMarcReader
       # Getting pubdate from 008.
       pubdate = Traject::Macros::Marc21Semantics.publication_date(marcrecord);
       out['pubdate'] = [{'008' => pubdate}];
-            
+
       marcrecord.fields.each do |f| # MARC::DataField
         if f.class == MARC::DataField then
           f.subfields.each do |subfield| # MARC::SubField
@@ -133,6 +134,7 @@ end
 
 class JsonReader < HathiMarcReader
   def initialize (stream)
+    puts "JsonReader using stream #{stream}";
     @infile = stream;
     @reader = Traject::NDJReader.new(check_gz(stream), {:logger => @@logger});
     return self;
@@ -144,6 +146,25 @@ class AlephReader < HathiMarcReader
     @infile = stream;
     @reader = Traject::AlephSequentialReader.new(check_gz(stream), {});
     return self;
+  end
+end
+
+class MongoReader < HathiMarcReader
+  include Enumerable; # Gives us each_with_index for gratis
+  def initialize (collection_name, query, infile)
+    @infile = infile;
+    @reader = self;
+    mongo   = HTPH::Hathimongo::Db.new();
+    coll    = mongo.conn[collection_name];
+    @cursor = coll.find(query);
+    return self;
+  end
+
+  def each
+    # For each document, parse source
+    @cursor.each do |doc|      
+      yield MARC::Record.new_from_hash(doc['source'])
+    end
   end
 end
 
@@ -179,7 +200,9 @@ end
 
 if __FILE__ == $0 then
   hmr = nil;
-  aleph = false;
+  aleph      = false;
+  mongo      = false;
+  mongo_path = nil;
 
   if ARGV.include?('aleph') then
     ARGV.delete('aleph');
@@ -192,6 +215,11 @@ if __FILE__ == $0 then
     @@require_fu = true;
   end
 
+  if ARGV.include?('mongo') then
+    ARGV.delete('mongo');
+    mongo = true;
+  end
+
   # Get a marc profile (which field has title, which has enumc, etc).
   # If none given, use data/marc_profiles/default.tsv
   # Populates @@spec, @@item_id_tag, @@enumc_tag.
@@ -202,9 +230,12 @@ if __FILE__ == $0 then
   ARGV.each do |arg|
     if aleph then
       hmr = AlephReader.new(arg);
+    elsif mongo then
+      hmr = MongoReader.new('source_records', {'file_path' => arg}, arg);
     else
       hmr = JsonReader.new(arg);
     end
+    puts "Using hmr #{hmr}";
     hmr.main();
   end
 end
