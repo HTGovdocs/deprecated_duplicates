@@ -197,3 +197,4 @@ create index hathi_lccn_gd_id  	       on hathi_lccn (gd_id)  	      using btree
 create index hathi_lccn_str_id 	       on hathi_lccn (str_id) 	      using btree;
 create index hathi_oclc_gd_id  	       on hathi_oclc (gd_id)  	      using btree;
 create index hathi_oclc_str_id 	       on hathi_oclc (str_id) 	      using btree;
+create index hathi_gd_lineno 	       on hathi_gd (lineno) 	      using btree;
