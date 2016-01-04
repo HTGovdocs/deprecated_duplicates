@@ -27,9 +27,17 @@ MARC::ControlField.control_tags.delete('FMT');
 class HathiMarcReader
   attr_accessor :infile;
   def main ()
-    @reader.each_with_index do |marcrecord,i|
-      # @reader.each_with_index do |marcrecord,i| # Marc::Record
-      out = {'infile' => @infile, 'lineno' => i}; # 1 json line per marc record
+    @reader.each_with_index do |record,i|
+      marcrecord = record;
+      mongo_id   = nil;
+
+      if self.class.to_s == 'MongoReader' then
+        marcrecord = MARC::Record.new_from_hash(record['source']);
+        i          = record['line_number'];
+        mongo_id   = record['id'];
+      end
+
+      out      = {'infile' => @infile, 'lineno' => i, 'mongo_id' => mongo_id}; # 1 json line per marc record
       holding  = {}; # A single holding, goes into holdings ...
       holdings = []; # ... the holdings (pairs of item_id and enumc), if any.
 
@@ -151,19 +159,19 @@ end
 
 class MongoReader < HathiMarcReader
   include Enumerable; # Gives us each_with_index for gratis
-  def initialize (collection_name, query, infile)
+  Mongo::Logger.logger.level = ::Logger::WARN;
+  def initialize (conn, collection_name, query, infile)
     @infile = infile;
-    @reader = self;
-    mongo   = HTPH::Hathimongo::Db.new();
-    coll    = mongo.conn[collection_name];
-    @cursor = coll.find(query);
+    @reader = self;    
+    @cursor = conn[collection_name].find(query);
     return self;
   end
 
   def each
     # For each document, parse source
     @cursor.each do |doc|      
-      yield MARC::Record.new_from_hash(doc['source'])
+      # yield MARC::Record.new_from_hash(doc['source'])
+      yield doc;
     end
   end
 end
@@ -231,11 +239,11 @@ if __FILE__ == $0 then
     if aleph then
       hmr = AlephReader.new(arg);
     elsif mongo then
-      hmr = MongoReader.new('source_records', {'file_path' => arg}, arg);
+      mongo = HTPH::Hathimongo::Db.new();
+      hmr   = MongoReader.new(mongo.conn, 'source_records', {'file_path' => arg}, arg);
     else
       hmr = JsonReader.new(arg);
     end
-    puts "Using hmr #{hmr}";
     hmr.main();
   end
 end
