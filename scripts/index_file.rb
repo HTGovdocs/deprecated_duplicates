@@ -17,7 +17,7 @@ def setup ()
   last_id_sql         = "SELECT LAST_INSERT_ID() AS id";
   str_exist_sql       = "SELECT id, str FROM hathi_str WHERE str = ?";
   str_insert_sql      = "INSERT INTO hathi_str (str) VALUES (?)";
-  hathi_gd_insert_sql = "INSERT INTO hathi_gd (gov_doc, file_id, lineno, hashsum, record_id, item_id) VALUES (?, ?, ?, ?, ?, ?)";
+  hathi_gd_insert_sql = "INSERT INTO hathi_gd (gov_doc, file_id, lineno, mongo_id, hashsum, record_id, item_id) VALUES (?, ?, ?, ?, ?, ?, ?)";
   input_select_sql    = "SELECT id FROM hathi_input_file WHERE file_path = ?";
   input_insert_sql    = "INSERT INTO hathi_input_file (file_path, date_read) VALUES (?, SYSDATE())";
 
@@ -77,7 +77,7 @@ def get_infile_id (infile)
   end
 
   if file_id.nil? then
-    raise "a stink: [#{infile}], #{@infile_cache}";
+    raise "No such infile [#{infile}] in cache #{@infile_cache.join(',')}";
   end
 
   @infile_cache[infile] = file_id;
@@ -95,7 +95,8 @@ def run (hdin)
   hdin.open('r').file.each_line do |line|
     i += 1;
 
-    if i == 1 then
+    if !line.start_with?('{') then
+      STDERR.puts "Skipping line: #{line}";
       next;
       # elsif i > 2000 then
       #  puts "ok we are done here";
@@ -109,9 +110,10 @@ def run (hdin)
     line_hash = JSON.parse(line);
 
     infile    = line_hash['infile'];
-    file_id   = get_infile_id(infile)
-    # We don't want to include lineno in digest, so we delete.
+    file_id   = get_infile_id(infile);
+    # We don't want to include lineno or mongo_id in digest, so we delete.
     lineno    = line_hash.delete('lineno');
+    mongo_id  = line_hash.delete('mongo_id');
     
     hashsum   = @sha_digester.hexdigest(line_hash.to_json);
     rec_id    = 'N/A';
@@ -134,7 +136,7 @@ def run (hdin)
 
     # Get an ID.
     begin
-      @hathi_gd_insert_q.execute(1, file_id, lineno, hashsum, rec_id, item_id);
+      @hathi_gd_insert_q.execute(1, file_id, lineno, mongo_id, hashsum, rec_id, item_id);
       @last_id_q.query() do |row|
         gd_id = row[:id];
       end
@@ -245,7 +247,7 @@ def insert_line (json, gd_id)
 
   json['pubdate'].each do |pubdate|
     marc_field = pubdate.keys.first;
-    val        = pubdate[marc_field];
+    val        = pubdate[marc_field].to_s;
     # Date normalization?
     next if val.nil?
     next if val.empty?;
