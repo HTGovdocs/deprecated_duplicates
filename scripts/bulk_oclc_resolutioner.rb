@@ -1,7 +1,9 @@
 require 'htph';
 
 # Performs OCLC resolution on the tables hathi_oclc and hathi_str.
-# Unused hathi strings should be removed with post_index_remove_unused_str.rb
+# If an OCLC number in hathi_oclc gets a hit in the OCLC resolution table, replace it with the
+# lowest number in the matched set.
+# Afterwards, unused hathi strings could/should be removed with post_index_remove_unused_str.rb
 
 log  = HTPH::Hathilog::Log.new();
 log.d("Started");
@@ -15,6 +17,8 @@ log.d("Prepping queries");
 
 @get_oclcs_query = conn.prepare("SELECT DISTINCT ho.str_id, hs.str AS oclc FROM hathi_oclc AS ho JOIN hathi_str AS hs ON (ho.str_id = hs.id) ORDER BY oclc");
 
+# This is how we find out if an OCLC number should be replaced.
+# holdings_htitem_oclc is the OCLC resolution table.
 map_sql = %W[
   SELECT z.a, MIN(z.b) AS min_b FROM (
     SELECT DISTINCT CAST(x.oclc AS UNSIGNED) AS a, CAST(y.oclc AS UNSIGNED) AS b
@@ -47,7 +51,8 @@ old_oclc_to_str_id_map = {};
     oclc_slice << row[:oclc];
   end
 
-  # Get all known mappings, for 100 oclcs at a time
+  # Get all known mappings, for 100 oclcs at a time.
+  # Put hits in oclc_map.
   @map_query.enumerate(*oclc_slice) do |row|
     if row[:a] != row[:min_b] then
       oclc_map[row[:a]] = row[:min_b];
@@ -88,6 +93,7 @@ need_str_id.each do |oclc|
   new_oclc_to_str_id_map[oclc.to_s] = str_id.to_s;
 end
 
+# Put pairs of old OCLC and new OCLC in a temporary file.
 log.d("Generating loadfile for temp table");
 tmp_table_data = HTPH::Hathidata::Data.new('tmp_oclc.dat').open('w');
 oclc_map.keys.each do |k|
@@ -121,6 +127,7 @@ update_from_tmp_sql = %W[
 log.d(update_from_tmp_sql);
 iconn.execute(update_from_tmp_sql);
 
+# Output summary.
 @count_oclcs_query.enumerate() do |row|
   log.d("Before-count was #{before_count}");
   log.d("After-count is #{row[:c]}");
