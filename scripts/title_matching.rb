@@ -1,4 +1,5 @@
 require 'htph';
+require 'threach';
 
 # Use for documents that lack good identifiers.
 
@@ -23,6 +24,7 @@ stop_words  = %w[
 
 score_cutoff     = 0.5;
 overlap_min_size = 5;
+thread_count     = 4;
 
 cat_sql_template = %w<
   SELECT hs.str
@@ -53,14 +55,15 @@ hdin.file.each_line do |id|
       words.each do |w|
         word_freqs[w] ||= 0;
         word_freqs[w]  += 1;
-        word_2_id[w]  ||= {};
         # Get reverse mapping too.
+        word_2_id[w]  ||= {};
         word_2_id[w][id] = 1;
       end
       id_bags[id][c] = words;
     end
   end
 end
+
 hdin.close();
 conn.close();
 
@@ -76,7 +79,11 @@ comparisons = 0;
 outputted   = 0;
 hdout       = HTPH::Hathidata::Data.new("title_word_matches.tsv").open('w');
 
-id_bags.keys.sort.each do |id|
+# Writing to outfile needs to be synchronized.
+mutex = Mutex.new();
+
+# N.B. threaded loop.
+id_bags.keys.sort.threach(thread_count) do |id|
   # Get all the words per id
   # Sort so the first word is the most relevant/rare
   words = get_words.call(id).sort_by{|w| inv_freq.call(w)}.reverse;
@@ -108,14 +115,21 @@ id_bags.keys.sort.each do |id|
       # Arbitrary cutoff. Only output if the score is high enough.
       if score > score_cutoff then
         # Output pair of ids, score and overlapping words.
-        hdout.file.puts [id, other_id, score.round(3), overlap.join(',')].join("\t");
-        outputted += 1;
+        outstr = [id, other_id, score.round(3), overlap.join(',')].join("\t");
+        mutex.synchronize {
+          hdout.file.puts(outstr);
+          outputted += 1;
+        }
       end
 
-      comparisons += 1;
+      mutex.synchronize {
+        comparisons += 1;
+      }
+
       if comparisons % 10000 == 0 then
         log.d("#{comparisons} record pairs compared, #{outputted} outputted");
       end
+
     end
   end
 end
