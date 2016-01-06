@@ -1,7 +1,6 @@
 require 'htph';
 require 'json';
 require 'logger';
-require 'threach';
 require 'traject';
 require 'traject/alephsequential_reader';
 require 'traject/macros/marc21';
@@ -11,11 +10,14 @@ require 'traject/ndj_reader';
 require 'zlib';
 
 # Call thusly:
-#   bundle exec ruby general_marcreader.rb CIC.ndj
+#   bundle exec ruby general_marcreader.rb CIC.ndj profile=/path/to/marc/profile.tsv
 # Add 'aleph' as commandline argument if you want to use Traject::AlephSequentialReader
 # Will transparently handle .gz extension.
+# Use 'mongo' and file_path to read from mongodb instead of file on disk:
+#  bundle exec ruby general_marcreader.rb mongo <mongo_file_path> profile=/path/to/marc/profile.tsv
+# If no profile is given, use default profile.
 
-@@spec = {};
+@@spec = {}; # Store marc profile, i.e. what to look for in each marc record and where to look.
 @@item_id_tag = nil;
 @@enumc_tag   = nil;
 @@require_fu  = false;
@@ -27,6 +29,7 @@ MARC::ControlField.control_tags.delete('FMT');
 class HathiMarcReader
   attr_accessor :infile;
   def main ()
+    # Use the reader to read marc records.
     @reader.each_with_index do |record,i|
       marcrecord = record;
       mongo_id   = nil;
@@ -44,7 +47,6 @@ class HathiMarcReader
       # Get the 008.
       field_008 = marcrecord.fields("008");
       value_008 = nil;
-
       if field_008.class == [].class then
         if field_008.size == 1 then
           value_008 = field_008.first.value;
@@ -66,9 +68,10 @@ class HathiMarcReader
       pubdate = Traject::Macros::Marc21Semantics.publication_date(marcrecord);
       out['pubdate'] = [{'008' => pubdate}];
 
-      marcrecord.fields.each do |f| # MARC::DataField
+      marcrecord.fields.each do |f|
+        # Loop over each MARC::DataField
         if f.class == MARC::DataField then
-          f.subfields.each do |subfield| # MARC::SubField
+          f.subfields.each do |subfield| # subfield is a MARC::SubField
             tagsub = f.tag; # e.g. 260, use if in @@spec, otherwise add subfield.
             # If @@spec has plain 260, do not use subfielded 260 as tagsub.
             if !@@spec.has_key?(tagsub) then
@@ -111,7 +114,7 @@ class HathiMarcReader
           end.compact;
         end
 
-        # Special filter for the textier elements
+        # Special filter for the textier elements, trim punctuation.
         %w[publisher title].each do |label|
           if out.has_key?(label) then
             out[label] = out[label].map do |h|
@@ -125,6 +128,7 @@ class HathiMarcReader
         if holdings.empty? then
           puts out.to_json;
         else
+          # Repeat output with different holding, for each holding.
           holdings.each do |h|
             out['item_id'] = {@@item_id_tag => h[@@item_id_tag]};
             out['enumc']   = {@@enumc_tag   => h[@@enumc_tag]};
@@ -140,6 +144,7 @@ class HathiMarcReader
   end
 end
 
+# Default file reader
 class JsonReader < HathiMarcReader
   def initialize (stream)
     puts "JsonReader using stream #{stream}";
@@ -149,6 +154,7 @@ class JsonReader < HathiMarcReader
   end
 end
 
+# Aleph reader, used if the string 'aleph' was in ARGV.
 class AlephReader < HathiMarcReader
   def initialize (stream)
     @infile = stream;
@@ -157,6 +163,7 @@ class AlephReader < HathiMarcReader
   end
 end
 
+# Mongo reader, used if the string 'mongo' was in ARGV.
 class MongoReader < HathiMarcReader
   include Enumerable; # Gives us each_with_index for gratis
   Mongo::Logger.logger.level = ::Logger::WARN;
@@ -168,14 +175,14 @@ class MongoReader < HathiMarcReader
   end
 
   def each
-    # For each document, parse source
+    # Yield each doc to calling block.
     @cursor.each do |doc|      
-      # yield MARC::Record.new_from_hash(doc['source'])
       yield doc;
     end
   end
 end
 
+# Make it so the file readers can read gzipped files.
 def check_gz (file_path)
   if file_path =~ /\.gz$/ then
     return Zlib::GzipReader.open(file_path);
@@ -183,13 +190,16 @@ def check_gz (file_path)
   return File.new(file_path);
 end
 
+# Reads the provided marc_profile, or the default profile if none given.
 def load_profile (profile)
   profile.gsub!(/^profile=/, '');
   @@logger.d("Loading @@spec with contents of #{profile}...");
   HTPH::Hathidata.read(profile) do |line|
+    # Assume tag<tab>value on each line.
     if line =~ /.+\t.+/ then
       (tag,label) = line.strip.split("\t");
       if tag =~ /^\d{3}[0-9a-z]?$/ then
+        # Item_id and enumc stored outside @@spec, for reasons I can't remember.
         if label == 'item_id' then
           @@item_id_tag = tag;
         elsif label == 'enumc' then
@@ -200,6 +210,7 @@ def load_profile (profile)
       end
     end
   end
+  # Log the loaded profile.
   @@logger.d("@@spec:");
   @@spec.keys.sort.each do |k|
     @@logger.d("#{k}\t#{@@spec[k]}");
@@ -207,25 +218,28 @@ def load_profile (profile)
 end
 
 if __FILE__ == $0 then
-  hmr = nil;
+  hmr        = nil;
   aleph      = false;
   mongo      = false;
   mongo_path = nil;
 
+  # Use aleph reader if 'aleph' in ARGV.
   if ARGV.include?('aleph') then
     ARGV.delete('aleph');
     aleph = true;
   end
 
-  if ARGV.include?('require_fu') then
-    # If @@require_fu is true, then reject records that don't have f and u in the proper positions in the leader (008).
-    ARGV.delete('require_fu');
-    @@require_fu = true;
-  end
-
+  # Use mongo reader if 'mongo' in ARGV.
   if ARGV.include?('mongo') then
     ARGV.delete('mongo');
     mongo = true;
+  end
+
+  # If ARGV has 'require_fu', then set @@require_fu to true.
+  # This modifies the behavior to reject records that don't have f and u in the proper positions in the 008.
+  if ARGV.include?('require_fu') then    
+    ARGV.delete('require_fu');
+    @@require_fu = true;
   end
 
   # Get a marc profile (which field has title, which has enumc, etc).
@@ -235,6 +249,8 @@ if __FILE__ == $0 then
   load_profile(profile);
   ARGV.delete(profile);
 
+  # At this point we know which reader to use.
+  # For the remaing args, read file(s) and output data.
   ARGV.each do |arg|
     if aleph then
       hmr = AlephReader.new(arg);
@@ -244,6 +260,7 @@ if __FILE__ == $0 then
     else
       hmr = JsonReader.new(arg);
     end
+    # Read.
     hmr.main();
   end
 end
