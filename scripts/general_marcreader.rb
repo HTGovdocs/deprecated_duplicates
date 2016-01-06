@@ -144,12 +144,17 @@ class HathiMarcReader
   end
 end
 
+# There are 3 different subclasses of HathiMarcReader (below);
+# JsonReader, AlephReader, MongoReader.
+# These determine how and where to read from.
+# The parent class HathiMarcReader (above) does the parsing, interpreting and outputting.
+
 # Default file reader
 class JsonReader < HathiMarcReader
   def initialize (stream)
     puts "JsonReader using stream #{stream}";
     @infile = stream;
-    @reader = Traject::NDJReader.new(check_gz(stream), {:logger => @@logger});
+    @reader = Traject::NDJReader.new(handle_gz(stream), {:logger => @@logger});
     return self;
   end
 end
@@ -158,7 +163,7 @@ end
 class AlephReader < HathiMarcReader
   def initialize (stream)
     @infile = stream;
-    @reader = Traject::AlephSequentialReader.new(check_gz(stream), {});
+    @reader = Traject::AlephSequentialReader.new(handle_gz(stream), {});
     return self;
   end
 end
@@ -169,21 +174,21 @@ class MongoReader < HathiMarcReader
   Mongo::Logger.logger.level = ::Logger::WARN;
   def initialize (conn, collection_name, query, infile)
     @infile = infile;
-    @reader = self;    
+    @reader = self;
     @cursor = conn[collection_name].find(query);
     return self;
   end
 
   def each
     # Yield each doc to calling block.
-    @cursor.each do |doc|      
+    @cursor.each do |doc|
       yield doc;
     end
   end
 end
 
-# Make it so the file readers can read gzipped files.
-def check_gz (file_path)
+# Make it so the file readers can handle gzipped files.
+def handle_gz (file_path)
   if file_path =~ /\.gz$/ then
     return Zlib::GzipReader.open(file_path);
   end
@@ -237,7 +242,7 @@ if __FILE__ == $0 then
 
   # If ARGV has 'require_fu', then set @@require_fu to true.
   # This modifies the behavior to reject records that don't have f and u in the proper positions in the 008.
-  if ARGV.include?('require_fu') then    
+  if ARGV.include?('require_fu') then
     ARGV.delete('require_fu');
     @@require_fu = true;
   end
