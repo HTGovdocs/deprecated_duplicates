@@ -1,0 +1,43 @@
+# This describes the list of steps used to create clusters.
+# We start with the assumption that readable marc exists either in a file or in mongodb.
+
+# ------------------
+# Extract indexable JSON from original input file:
+  bundle exec ruby scripts/general_marcreader.rb /htdata/govdocs/marc/foo/bar.gz > /htdata/govdocs/marc/foo/bar_parsed_YYYYMMDD.json
+
+# ... or, more likely, from mongodb:
+  bundle exec ruby scripts/general_marcreader.rb mongo [mongo file_path] > /htdata/govdocs/marc/foo/bar_parsed_YYYYMMDD.json
+
+# ------------------
+# Index (use --delete flag to delete current data first) to put data in mysql:
+  bundle exec ruby scripts/index_file.rb /htdata/govdocs/marc/foo/bar_parsed_YYYYMMDD.json
+
+# ------------------
+# When all files are indexed, resolve OCLC:
+  bundle exec ruby -J-Xmx2000m scripts/bulk_oclc_resolutioner.rb
+
+# ------------------
+# Join on ids (this needs some extra RAM):
+  bundle exec ruby -J-Xmx16000m -J-Xss2000m scripts/only_join_on_ids.rb > data/merged_YYYYMMDD.tsv
+
+# ------------------
+# Analyze those clusters (only_join_on_ids.rb gives us 'cluster' or 'solo').
+  bundle exec ruby -J-Xmx16000m scripts/analyze_cluster.rb merged_YYYYMMDD.tsv
+# ... which outputs solos_YYYYMMDD.tsv, related_YYYYMMDD.tsv, duplicates_YYYYMMDD.tsv, huge_YYYYMMDD.tsv in data/.
+
+# ------------------
+# Analyze the clusters that were too big. Prep this first, by turning the huge clusters into one id per line.
+  cat data/huge_YYYYMMDD.tsv | awk -F'\t' '{print $2}' | tr ',' '\n' | sort -nu > data/huge_YYYYMMDD_sortu.tsv
+
+# Then run.
+  bundle exec ruby scripts/duplicate_detection_filebased.rb huge_YYYYMMDD_sortu.tsv > data/analyzed_clusters_YYYYMMDD.tsv
+
+# ------------------
+# Sort and uniquify those clusters:
+  sort -u data/analyzed_clusters_YYYYMMDD.tsv > data/analyzed_clusters_YYYYMMDD_sortu.tsv
+
+# ------------------
+# Grep those and append to previous out-files:
+  grep solo       data/analyzed_clusters_YYYYMMDD_sortu.tsv                                               >> data/solos_YYYYMMDD.tsv
+  grep related    data/analyzed_clusters_YYYYMMDD_sortu.tsv | tr -d '*' | awk -F'\t' '{print $1 "\t" $3}' >> data/related_YYYYMMDD.tsv
+  grep duplicates data/analyzed_clusters_YYYYMMDD_sortu.tsv | tr -d '*'                                   >> data/duplicates_YYYYMMDD.tsv
