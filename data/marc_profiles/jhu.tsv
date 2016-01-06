@@ -1,0 +1,17 @@
+001	record_id
+010a	lccn
+022a	issn
+035a	oclc
+086a	sudoc
+945a	sudoc
+110	publisher
+245a	title
+245b	title
+246a	title
+246b	title
+260b	publisher
+260c	pubdate
+264	publisher
+710	publisher
+955b	item_id
+955v	enumc
