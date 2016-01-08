@@ -2,11 +2,12 @@ require 'htph';
 require 'set';
 
 # Deal with the ones deemed too heavy for analyze_cluster, which it will have put in a "huge_$ymd.tsv" file.
+# Get those clusters into one id per line and pass the resulting file to this script.
 # Nota Bene, output of this here script should be passed through `sort -u`.
 
-db    = HTPH::Hathidb::Db.new();
-@log  = HTPH::Hathilog::Log.new(); 
-@conn = db.get_conn();
+db        = HTPH::Hathidb::Db.new();
+@log      = HTPH::Hathilog::Log.new();
+@conn     = db.get_conn();
 @qmarks_a = ['?'] * 2500;
 @qmarks   = @qmarks_a.join(',');
 @infile   = ARGV.shift;
@@ -20,7 +21,6 @@ def run
 
   # Get related ids and the checksum of the things that make them related.
   # Enum-chrons are NOT included in this pass.
-  # -- dropped title.
   sql_get_related = %W[
     SELECT
       h.id AS gd_id,
@@ -35,12 +35,12 @@ def run
         )
       ) AS checksum
     FROM
-      hathi_gd                  AS h
-      LEFT JOIN hathi_pubdate   AS d ON (h.id = d.gd_id)
-      LEFT JOIN hathi_sudoc     AS s ON (h.id = s.gd_id)
-      LEFT JOIN hathi_oclc      AS o ON (h.id = o.gd_id)
-      LEFT JOIN hathi_lccn      AS l ON (h.id = l.gd_id)
-      LEFT JOIN hathi_issn      AS i ON (h.id = i.gd_id)
+      hathi_gd                AS h
+      LEFT JOIN hathi_pubdate AS d ON (h.id = d.gd_id)
+      LEFT JOIN hathi_sudoc   AS s ON (h.id = s.gd_id)
+      LEFT JOIN hathi_oclc    AS o ON (h.id = o.gd_id)
+      LEFT JOIN hathi_lccn    AS l ON (h.id = l.gd_id)
+      LEFT JOIN hathi_issn    AS i ON (h.id = i.gd_id)
     WHERE h.id IN (#{@qmarks})
   ].join(" ");
   q_get_related = @conn.prepare(sql_get_related);
@@ -131,22 +131,23 @@ def run
     end
 
     chunk_max_size = 50;
-    enumc_id_map = {};
+    enumc_id_map   = {};
     @doc_attr_vals = {};
 
     # For a cluster, get a hash of all values for sudoc, oclc, etc.,
-    # and how many of each. {:sudoc_id=>{nil=>5}, :oclc_id=>{498486=>5}, ... }
-    uniq_attr_set  = {
-      :sudoc_id => {},
-      :oclc_id  => {},
-      :lccn_id  => {},
-      :issn_id  => {},
-      :title_id => {},
+    # and how many of each. Like:
+    # uniq_attr_set = {:sudoc_id=>{nil=>5}, :oclc_id=>{498486=>5}, ... }
+    uniq_attr_set = {
+      :sudoc_id     => {},
+      :oclc_id      => {},
+      :lccn_id      => {},
+      :issn_id      => {},
+      :title_id     => {},
       :publisher_id => {},
-      :enumc_id => {},    
+      :enumc_id     => {},
     };
 
-    # In case there are more than @qmarks_a.size ids.
+    # Look up q_get_values for all ids.
     while ids.size > 0 do
       ids_chunk = [];
       1.upto(chunk_max_size).each do
@@ -158,6 +159,9 @@ def run
       q_args  = [ids_chunk, padding].flatten;
       q_get_values.enumerate(*q_args) do |vals|
           uniq_attr_set.keys.each do |x|
+          # For each record from query:
+          # store sudoc in uniq_attr_set[:sudoc_id][<value>],
+          # oclc in uniq_attr_set[:oclc_id][<value>], etc...
           uniq_attr_set[x][vals[x]] = 1;
           if x != :enumc_id && !vals[x].nil? then
             @doc_attr_vals[vals[:id]] ||= {};
@@ -170,6 +174,8 @@ def run
       end
     end
 
+    # Figure out the relation.
+    # First some easy relation checks:
     rel = "";
     if uniq_attr_set[:enumc_id].keys == [nil] then
       # None of the docs have enumchrons.
@@ -186,9 +192,13 @@ def run
       # and the cluster as a whole with asterisk.
       subclusters = false;
       enumc_id_map.keys.each do |enumc|
+        # Enumchrons that occur in more than one record 
+        # get outputted as duplicate clusters.
         if enumc_id_map[enumc].size > 1 then
           subclusters = true;
-          puts "duplicates*\t#{score(enumc_id_map[enumc])}\t#{enumc_id_map[enumc].sort.join(',')}";
+          s           = score(enumc_id_map[enumc]);
+          dup_ids_out = enumc_id_map[enumc].sort.join(',');
+          puts "duplicates*\t#{s}\t#{dup_ids_out}";
         end
       end
       if subclusters == true then
@@ -218,8 +228,6 @@ def score (ids)
 
   val_counts.each do |vc|
     score = 1 - ((ids.size - vc) / sum_vals);
-    # puts "#{score} = 1 - ((#{ids.size} - #{vc}) / #{sum_vals})";
-    # puts "#{tot} += #{score}";
     tot += score;
   end
 
