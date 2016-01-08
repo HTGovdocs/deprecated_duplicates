@@ -23,6 +23,7 @@ def main
   @ping_q  = conn.prepare("SELECT 1");
   @ping_t  = Time.new();
   # File with ^(cluster|solo)\t\d+(,(\d+,)\d*)$ on each line
+  # output from only_join_on_ids.rb.
   hdin   = HTPH::Hathidata::Data.new(ARGV.shift).open('r');
   @solos = HTPH::Hathidata::Data.new("solos_$ymd.tsv").open('w');
   @rels  = HTPH::Hathidata::Data.new("related_$ymd.tsv").open('w');
@@ -34,9 +35,7 @@ def main
 
   # Go through input file
   hdin.file.each_line do |line|
-
     next if line !~ /^(solo|cluster)\t/;
-
     line.strip!;
     (type, idstr) = line.split("\t");
     ids = idstr.nil? ? [] : idstr.split(',').map{|x| x.to_i};
@@ -45,7 +44,7 @@ def main
     @log.d("input line #{i} has #{ids.size} ids");
     # end
 
-    if type == 'cluster' then     
+    if type == 'cluster' then
       if ids.size > cluster_max_size then
         # This is too big. We have to deal with them differently.
         @huge.file.puts(line);
@@ -64,6 +63,7 @@ def main
   end
 end
 
+# Take a line from input file and do stuff to it.
 def analyze_cluster (ids)
   # 2d hash where [doc + attr] -> vals
   # Refresh for each cluster.
@@ -85,11 +85,10 @@ def analyze_cluster (ids)
     end
   end
 
-  skip    = [];
   related = [];
 
   # Get related subset(s).
-  get_related(ids, skip, related);
+  get_related(ids, [], related);
 
   related.sort_by!{|x| x.size};
   related.each_with_index do |x,i|
@@ -125,7 +124,11 @@ def analyze_cluster (ids)
   end
 end
 
+# Given an array of ids, get subsets that are more closely related.
 def get_related (ids, skip, related)
+  # ids is a list of ids in a cluster.
+  # skip is an array of things we've already looked at, so we don't have to look at them again.
+  # related is an array of arrays of ids that we deem related.
   if ids.size <= 1 then
     # No point in looking for related ids if given a single id.
     return nil;
@@ -134,6 +137,9 @@ def get_related (ids, skip, related)
   @ping_q.enumerate do |x|
     @log.d("Ping!");
   end
+
+  # Each time we recurse we're going to add something to skip,
+  # so we don't keep looking for the same attribute type.
   attrs       = %w[oclc sudoc lccn issn title];
   attrs_order = attrs - skip;
 
@@ -144,7 +150,8 @@ def get_related (ids, skip, related)
       @doc_attr_vals[doc][attr].each do |val|
         attr_val_docs[attr]         ||= {};
         attr_val_docs[attr][val]    ||= {};
-        # Remember that title=123 occurs in document 555
+        # Remember that title=123 occurs in document 555:
+        # attr_val_docs['title'][123][555]
         attr_val_docs[attr][val][doc] = true;
       end
     end
@@ -157,19 +164,19 @@ def get_related (ids, skip, related)
     next if attr == 'enumc';
     attr_val_docs[attr].keys.each do |val|
       if attr_val_docs[attr][val].keys.size == 1 then
-        # puts "#{attr} #{val} #{attr_val_docs[attr][val].keys} is just one, remove.";
+        # puts "#{attr} #{val} #{attr_val_docs[attr][val].keys} only occurs once in this set, remove.";
         attr_val_docs[attr].delete(val);
       end
     end
   end
 
-  # Now drill down. Is there anything they all have in common?
-  # Look at attrs in descending order of importance.
   biggest_key_attr = '';
   biggest_key_val  = '';
   biggest_key_size = 0;
   common           = '';
 
+  # Now drill down. Is there anything they all have in common?
+  # Look at attrs in descending order of importance.
   catch :b0rk do
     attrs_order.each do |attr|
       if attr_val_docs.has_key?(attr) then
@@ -194,14 +201,20 @@ def get_related (ids, skip, related)
 
   if common == '' then
     if biggest_key_size == 0 then
+      # This should not happen. At this point there has to be things that some members in
+      # the set have in common, or they wouldn't have been clustered together in the first place.
       # puts "Nothing in common!";
     else
       # The biggest key is the thing that most docs have in common.
-      # puts "biggest key was #{biggest_key_attr} #{biggest_key_val}, shared by #{attr_val_docs[biggest_key_attr][biggest_key_val].keys.join(',')}";
+      # Separate the set of ids into: 
+      # * one set of ids that all have the biggest thing in common (biggest_key_ids)
+      # * one set of ids that DONT have the biggest thing in common (reaining_ids)
       biggest_key_ids = attr_val_docs[biggest_key_attr][biggest_key_val].keys;
-      remaining_ids   = ids - biggest_key_ids;
+      reaining_ids    = ids - biggest_key_ids;
+      # Save this set of ids as an array in the related array if you can't find anything more related in them...
       (related << biggest_key_ids) if (get_related(biggest_key_ids, (skip << biggest_key_attr), related) == nil);
       if remaining_ids.size > 1 then
+        # Also recurse down on the ids that were NOT in the set which had biggest_key_attr in common.
         (related << remaining_ids) if (get_related(remaining_ids, [], related) == nil);
       end
     end
@@ -211,6 +224,7 @@ def get_related (ids, skip, related)
   end
 end
 
+# Take a list of ids and return an array of arrays of ids that have the same (or nil) enumchron.
 def get_duplicates (ids)
   enumc_doc  = {};
   duplicates = [];
@@ -218,17 +232,33 @@ def get_duplicates (ids)
   # At this point we know that the cluster has a bunch of things in common.
   # So really, it's just a matter of checking enumcs.
 
+  # For example, assume input ids = [1,2,3,4] 
+  # and @doc_attr_vals[1]['enumc'] = 'v1',
+  #     @doc_attr_vals[2]['enumc'] = 'v2',
+  #     @doc_attr_vals[3]['enumc'] = 'v1',
+  #     @doc_attr_vals[4]['enumc'] = 'v2'
+
   @ping_q.enumerate do |x|
     @log.d("Ping!");
   end
 
-  ids.each do |doc|    
+  # For each enumchron in the set, reverse map enumc -> docs.
+  ids.each do |doc|
     @doc_attr_vals[doc]['enumc'] ||= [nil];
     @doc_attr_vals[doc]['enumc'].each do |val|
       enumc_doc[val]    ||= {};
       enumc_doc[val][doc] = true;
     end
   end
+
+  # At the end of this loop, we'll have:
+  # enumc_doc = {
+  #   'v1' => {1 => true, 3 => true}, 
+  #   'v2' => {2 => true, 4 => true},     
+  # }
+  # Now, for each key in enumc_doc that leads to more than one id,
+  # take those ids and put in an array in duplicates.
+
   enumc_doc.keys.each do |enumc|
     if enumc_doc[enumc].keys.size > 1 then
       duplicates << enumc_doc[enumc].keys;
@@ -238,7 +268,15 @@ def get_duplicates (ids)
   return duplicates;
 end
 
+# Take a list of ids and assign a score based on how much their values have in common.
+# Examples in comments below.
 def score (ids)
+  # Assume in this example that ids is an array with 3 ids.
+  # They all have the same oclc but 2 are from congress and 1 from the senate.
+  # For each distinct attribute value in the set we get based on the ids,
+  # count how many times they occur and store in count_vals.
+  # So, count_vals = {"555" => 3, "congress" => 2, "senate" => 1}
+
   count_vals = {};
   ids.each do |doc|
     @doc_attr_vals[doc].keys.each do |attr|
@@ -248,14 +286,30 @@ def score (ids)
     end
   end
 
+  # val_counts is how many values there are in the set.
+  # so since
+  # count_vals = {"555" => 3, "congress" => 2, "senate" => 1}
+  # then sum_vals = 6.0
+
   val_counts = count_vals.values;
   sum_vals   = val_counts.inject(:+).to_f;
   tot        = 0.0;
+
+  # If there are 3 ids and count_vals = {"555" => 3, "congress" => 2, "senate" => 1}
+  # then add into tot:
+  # 1 - ((3 - 3) / 6.0) = 1
+  # 1 - ((3 - 2) / 6.0) = 0.8333333333333334
+  # 1 - ((3 - 1) / 6.0) = 0.6666666666666667
 
   val_counts.each do |vc|
     score = 1 - ((ids.size - vc) / sum_vals);
     tot += score;
   end
+
+  # In this example, we end up with tot = 2.5
+  # Divide this by the number of values, which is 3 ("555", "congress", "senate")
+  # 2.5 / 3 = 0.8333333333333334
+  # Raise to the power of 3 just to punish values more the further away they are from 1.
 
   return (tot / val_counts.size) ** 3;
 end
