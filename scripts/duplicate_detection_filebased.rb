@@ -187,6 +187,7 @@ def run
       # There are as many enumchrons as there are documents.
       rel = "related";
     else
+      # Got nothing from the easy relation checks.
       # Look for duplicates inside the cluster.
       # If so, then mark duplicates with asterisk,
       # and the cluster as a whole with asterisk.
@@ -204,6 +205,7 @@ def run
       if subclusters == true then
         rel = "related*";
       else
+        # This shouldn't happen.
         rel = "unclear";
       end
     end
