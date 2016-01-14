@@ -1,5 +1,3 @@
-use ht_repository;
-
 -- Dropping indexes
 drop index hathi_gd_str              on hathi_str;
 drop index hathi_record 	     on hathi_gd;
