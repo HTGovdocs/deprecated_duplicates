@@ -19,6 +19,8 @@ log.d("Prepping queries");
 
 # This is how we find out if an OCLC number should be replaced.
 # holdings_htitem_oclc is the OCLC resolution table.
+# Given a list of oclc numbers, for each number (a) in the list, look up all other numbers related by volume id
+# and return the lowest (min_b). If a != min_b, then a should be replaced with min_b.
 map_sql = %W[
   SELECT z.a, MIN(z.b) AS min_b FROM (
     SELECT DISTINCT CAST(x.oclc AS UNSIGNED) AS a, CAST(y.oclc AS UNSIGNED) AS b

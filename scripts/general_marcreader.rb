@@ -129,6 +129,8 @@ class HathiMarcReader
           puts out.to_json;
         else
           # Repeat output with different holding, for each holding.
+          # So if holdings = {{@@item_id_tag=>1, @@enumc_tag=>'v.12'}, {@@item_id_tag=>2, @@enumc_tag=>'v.34'}}
+          # ... then we output 2 json strings, same except for item_id and enumc.
           holdings.each do |h|
             out['item_id'] = {@@item_id_tag => h[@@item_id_tag]};
             out['enumc']   = {@@enumc_tag   => h[@@enumc_tag]};
