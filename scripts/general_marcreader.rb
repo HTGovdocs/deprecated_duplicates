@@ -37,7 +37,7 @@ class HathiMarcReader
       if self.class.to_s == 'MongoReader' then
         marcrecord = MARC::Record.new_from_hash(record['source']);
         i          = record['line_number'];
-        mongo_id   = record['id'];
+        mongo_id   = record['source_id'];
       end
 
       out      = {'infile' => @infile, 'lineno' => i, 'mongo_id' => mongo_id}; # 1 json line per marc record
