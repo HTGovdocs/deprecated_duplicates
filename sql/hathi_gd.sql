@@ -57,6 +57,7 @@ create table hathi_gd (
   gov_doc   TINYINT     not null,
   file_id   INT         not null, -- The file we got the record from
   lineno    INT         not null, -- The line in the input file where we got the record.
+  mongo_id  CHAR(36)    null,     -- source_id in mongo.
   record_id VARCHAR(50) not null, -- Whatever the unique id is of the base record in the file.
   item_id   VARCHAR(50) null,     -- If the record has holdings, the id of the item.
   hashsum   CHAR(64)    not null unique,
