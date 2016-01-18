@@ -1,3 +1,4 @@
+# encoding: utf-8
 require 'htph';
 require 'json';
 require 'logger';
@@ -8,6 +9,7 @@ require 'traject/macros/marc21_semantics';
 require 'traject/marc_reader';
 require 'traject/ndj_reader';
 require 'zlib';
+require_relative '../ext/icu4j-56_1.jar';
 
 # Call thusly:
 #   bundle exec ruby general_marcreader.rb CIC.ndj profile=/path/to/marc/profile.tsv
@@ -17,11 +19,17 @@ require 'zlib';
 #  bundle exec ruby general_marcreader.rb mongo <mongo_file_path> profile=/path/to/marc/profile.tsv
 # If no profile is given, use default profile.
 
-@@spec = {}; # Store marc profile, i.e. what to look for in each marc record and where to look.
+@@spec        = {}; # Store marc profile, i.e. what to look for in each marc record and where to look.
 @@item_id_tag = nil;
 @@enumc_tag   = nil;
 @@require_fu  = false;
 @@logger      = HTPH::Hathilog::Log.new();
+# @@text_filter does, to a string:
+# unicode decomposition,
+# case fold to lowercase
+# transliterate everything to a latin script
+# translate that into ASCII.
+@@text_filter = com.ibm.icu.text.Transliterator.get_instance "NFKC; Lower(); Any-Latin; Latin-ASCII";
 
 # Without this we can't parse zephir_full_* files, which have a FMT in them.
 MARC::ControlField.control_tags.delete('FMT');
@@ -45,22 +53,29 @@ class HathiMarcReader
       holdings = []; # ... the holdings (pairs of item_id and enumc), if any.
 
       # Get the 008.
-      field_008 = marcrecord.fields("008");
-      value_008 = nil;
-      if field_008.class == [].class then
-        if field_008.size == 1 then
-          value_008 = field_008.first.value;
-        else
-          @@logger.d("Record #{i} has a weird number of 008s (#{field_008.size}), skipping.");
+      # get_from_marc (rec, tag)
+      values_008 = get_from_marc(marcrecord, '008');
+
+      # Check that we got exactly 1 008.
+      if values_008.class == [].class then
+        if values_008.size != 1 then
+          @@logger.d("Record #{i} has a weird number of 008s (#{values_008.size}), skipping.");
+          values_008 = [];
         end
-      else
-        @@logger.d("Record #{i} has no 008, skipping.");
       end
+      # value_008 is nil if values_008 is [].
+      value_008 = values_008.first;
 
       if @@require_fu then
-        # Throw out ones that aren't strictly us fed docs according to the 008.
+        # If we set @@require_fu, then
+        # throw out records whose 008 isn't strictly us fed doc.
+        if value_008.nil? then
+          @@logger.d("Record #{i} has a nil 008");
+          next;
+        end
         if value_008[17] != 'u' || value_008[28] != 'f' then
           @@logger.d("Record #{i} has a 008 that doesn't look like a us fed doc: [#{value_008[17]}#{value_008[28]}] in #{value_008}.");
+          next;
         end
       end
 
@@ -68,77 +83,107 @@ class HathiMarcReader
       pubdate = Traject::Macros::Marc21Semantics.publication_date(marcrecord);
       out['pubdate'] = [{'008' => pubdate}];
 
-      marcrecord.fields.each do |f|
-        # Loop over each MARC::DataField
-        if f.class == MARC::DataField then
-          f.subfields.each do |subfield| # subfield is a MARC::SubField
-            tagsub = f.tag; # e.g. 260, use if in @@spec, otherwise add subfield.
-            # If @@spec has plain 260, do not use subfielded 260 as tagsub.
-            if !@@spec.has_key?(tagsub) then
-              tagsub = f.tag + subfield.code; # e.g. 260c
-            end
-            if (tagsub == @@item_id_tag || tagsub == @@enumc_tag) then
-              # Special case: holdings. Always look for no matter what @@spec says.
-              holding[tagsub] = strip_val(subfield.value);
-              # Add to holdings if we have both enumc and item_id.
-              if holding.has_key?(@@item_id_tag) && holding.has_key?(@@enumc_tag) then
-                holdings << holding;
-                holding = {};
-              end
-            elsif @@spec.has_key?(tagsub) then
-              name        = @@spec[tagsub];
-              out[name] ||= [];
-              val         = strip_val(subfield.value);
-              out[name]  << {tagsub => val};
-            end
+      # Getting everything else in @@spec from the MARC::Record.
+      @@spec.keys.each do |tag|
+        # e.g. tag='035a', outtype='oclc', out['oclc'] = []
+        outtype = @@spec[tag];
+        out[outtype] ||= [];
+        outvals = get_from_marc(marcrecord, tag);
+        outvals.each do |val|
+          # e.g. out['oclc'] << {'035a' => 555}
+          out[outtype] << {tag => val};
+        end
+      end
+
+      # If there is better data outside the marc record, use that instead.
+      if self.class.to_s == 'MongoReader' then
+        # issn
+        if record.has_key?('issn_normalized') && record['issn_normalized'].size > 0 then
+          @@logger.d("Overwriting issn #{out['issn'].join(', ')} with #{record['issn_normalized'].join(', ')}");
+          out['issn'] = [];
+          record['issn_normalized'].each do |issn|
+            out['issn'] << {'999x' => issn}; 
           end
-        elsif f.class == MARC::ControlField then
-          # MARC::ControlField doesn't have subfields.
-          if @@spec.has_key?(f.tag) then
-            name        = @@spec[f.tag];
-            out[name] ||= [];
-            val         = strip_val(f.value);
-            out[name]  << {f.tag => val};
+        end
+        # lccn
+        if record.has_key?('lccn_normalized') && record['lccn_normalized'].size > 0 then
+          @@logger.d("Overwriting lccn #{out['lccn'].join(', ')} with #{record['lccn_normalized'].join(', ')}");
+          out['lccn'] = [];
+          record['lccn_normalized'].each do |lccn|
+            out['lccn'] << {'999x' => lccn}; 
+          end
+        end
+        # oclc
+        if record.has_key?('oclc_resolved') && record['oclc_resolved'].size > 0 then
+          @@logger.d("Overwriting oclc #{out['oclc'].join(', ')} with #{record['oclc_resolved'].join(', ')}");
+          out['oclc'] = [];
+          record['oclc_resolved'].each do |oclc|
+            out['oclc'] << {'999x' => oclc}; 
           end
         end
       end
-      # Output json, if any.
+
+      # if there were e.g. no lccns, remove empty lccn array from output.
+      out.delete_if {|k,v| v.class == [].class && v.empty?};
+
       if !out.keys.empty? then
-        # Special for OCLC
-        if out.has_key?('oclc') then
-          out['oclc'] = out['oclc'].map do |h|
-            k = h.keys.first;
-            v = h[k];
-            o = Traject::Macros::Marc21Semantics.oclcnum_extract(v);
-            o.nil? ? nil : {k => o};
-          end.compact;
-        end
 
         # Special filter for the textier elements, trim punctuation.
         %w[publisher title].each do |label|
           if out.has_key?(label) then
             out[label] = out[label].map do |h|
               k = h.keys.first;
-              {k => Traject::Macros::Marc21.trim_punctuation(h[k])}
+              begin
+                {k => @@text_filter.transliterate(h[k]).gsub(/\p{Punct}/, '')}
+              rescue Exception => e
+                @@logger.f(e.message);
+                @@logger.f(e.backtrace.inspect);
+                @@logger.f("Problem filtering the text <#{k}> : <#{h[k]}>, mongo source_id #{mongo_id}");
+                exit;
+              end
             end
           end
         end
 
         # Output with holdings, if any.
-        if holdings.empty? then
-          puts out.to_json;
-        else
-          # Repeat output with different holding, for each holding.
-          # So if holdings = {{@@item_id_tag=>1, @@enumc_tag=>'v.12'}, {@@item_id_tag=>2, @@enumc_tag=>'v.34'}}
-          # ... then we output 2 json strings, same except for item_id and enumc.
-          holdings.each do |h|
-            out['item_id'] = {@@item_id_tag => h[@@item_id_tag]};
-            out['enumc']   = {@@enumc_tag   => h[@@enumc_tag]};
-            puts out.to_json;
+        if out.has_key?('item_id') && out.has_key?('enumc') then
+          # Once per pair of item_id & enumc
+          item_ids = out.delete('item_id');
+          enumcs   = out.delete('enumc');
+          item_ids.zip(enumcs).each do |item_id,enumc|
+            if !enumc.nil? then
+              out['item_id'] = item_id;
+              out['enumc']   = enumc;
+              puts out.to_json;
+            end
           end
+        else
+          # Or just output if no holdings.
+          puts out.to_json;
         end
+
       end
     end
+  end
+
+  # Takes a MARC::Record and tag like 500x
+  # returns array of all values for the tag found in the record.
+  def get_from_marc (rec, tag)
+    raise "Bad input <#{tag}>" if tag !~ /^\d{3}[a-z]?$/;
+    # Split tag into field and subfield.
+    # if tag="500"  then field="500", subfield="".
+    # if tag="500x" then field="500", subfield="x".
+    field, subfield = tag[0,3], tag[3,4];
+    acc = [];
+    rec.fields(field).each do |f|
+      if f.class == MARC::ControlField then
+        acc << f.value;
+      else
+        # Get all subfields if subfield is empty, otherwise only subfields matching subfield.
+        f.find_all{ |sf| (subfield.empty? || sf.code == subfield) }.map(&:value).each{ |v| acc << v }
+      end
+    end
+    return acc.map{|v| strip_val(v)};
   end
 
   def strip_val (str)
@@ -203,17 +248,19 @@ def load_profile (profile)
   @@logger.d("Loading @@spec with contents of #{profile}...");
   HTPH::Hathidata.read(profile) do |line|
     # Assume tag<tab>value on each line.
+    # Like, 035a<tab>oclc
     if line =~ /.+\t.+/ then
       (tag,label) = line.strip.split("\t");
       if tag =~ /^\d{3}[0-9a-z]?$/ then
-        # Item_id and enumc stored outside @@spec, for reasons I can't remember.
+        # Like, @@spec['035a'] = 'oclc';
+        @@spec[tag] = label;
+        # Keep track of these especially.
         if label == 'item_id' then
           @@item_id_tag = tag;
         elsif label == 'enumc' then
           @@enumc_tag = tag;
-        else
-          @@spec[tag] = label;
         end
+
       end
     end
   end
@@ -251,7 +298,7 @@ if __FILE__ == $0 then
 
   # Get a marc profile (which field has title, which has enumc, etc).
   # If none given, use data/marc_profiles/default.tsv
-  # Populates @@spec, @@item_id_tag, @@enumc_tag.
+  # Populates @@spec
   profile = ARGV.find{|x| x =~ /profile=.+/} || 'marc_profiles/default.tsv';
   load_profile(profile);
   ARGV.delete(profile);
