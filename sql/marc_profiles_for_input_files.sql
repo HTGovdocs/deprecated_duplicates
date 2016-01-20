@@ -1,13 +1,12 @@
 UPDATE hathi_input_file SET marc_profile = '' WHERE id = '10' AND file_path = '/htdata/govdocs/marc/umich/umich_converted_20150415.ndj';
-UPDATE hathi_input_file SET marc_profile = '' WHERE id = '12' AND file_path = '/htdata/govdocs/MARC/extracted_json_fixed/MeWC-20131002-0300.xml.ndj';
 UPDATE hathi_input_file SET marc_profile = '' WHERE id = '18' AND file_path = '/htdata/govdocs/marc/CIC/CIC_all.ndj.gz';
 UPDATE hathi_input_file SET marc_profile = '' WHERE id = '19' AND file_path = '/htdata/govdocs/marc/minnesota/all_minn_records.ndj.gz';
-UPDATE hathi_input_file SET marc_profile = '' WHERE id = '26' AND file_path = '/htdata/govdocs/MARC/extracted_json_fixed/MdU-20140131-1256.xml.ndj';
 UPDATE hathi_input_file SET marc_profile = '' WHERE id = '7' AND file_path = '/htdata/govdocs/marc/hathi/zephir_full_20141231_only_govdocs.json';
 UPDATE hathi_input_file SET marc_profile = '/htapps/mwarin.babel/gdweb_script/data/marc_profiles/arizona.tsv' WHERE id = '8' AND file_path = '/htdata/govdocs/MARC/extracted_json_fixed/arizona20140207.ndj';
 UPDATE hathi_input_file SET marc_profile = '/htapps/mwarin.babel/gdweb_script/data/marc_profiles/asu.tsv' WHERE id = '47' AND file_path = '/htdata/govdocs/MARC/extracted_json_fixed/asu.ndj';
 UPDATE hathi_input_file SET marc_profile = '/htapps/mwarin.babel/gdweb_script/data/marc_profiles/baylor.tsv' WHERE id = '14' AND file_path = '/htdata/govdocs/MARC/extracted_json_fixed/baylor.ndj';
 UPDATE hathi_input_file SET marc_profile = '/htapps/mwarin.babel/gdweb_script/data/marc_profiles/clemson.tsv' WHERE id = '46' AND file_path = '/htdata/govdocs/MARC/extracted_json_fixed/clemson.ndj';
+UPDATE hathi_input_file SET marc_profile = '/htapps/mwarin.babel/gdweb_script/data/marc_profiles/colby.tsv' WHERE id = '12' AND file_path = '/htdata/govdocs/MARC/extracted_json_fixed/MeWC-20131002-0300.xml.ndj';
 UPDATE hathi_input_file SET marc_profile = '/htapps/mwarin.babel/gdweb_script/data/marc_profiles/colorado.tsv' WHERE id = '32' AND file_path = '/htdata/govdocs/MARC/extracted_json_fixed/colorado.ndj';
 UPDATE hathi_input_file SET marc_profile = '/htapps/mwarin.babel/gdweb_script/data/marc_profiles/cornell.tsv' WHERE id = '38' AND file_path = '/htdata/govdocs/MARC/extracted_json_fixed/cornell.ndj';
 UPDATE hathi_input_file SET marc_profile = '/htapps/mwarin.babel/gdweb_script/data/marc_profiles/fit.tsv' WHERE id = '45' AND file_path = '/htdata/govdocs/MARC/extracted_json_fixed/fit.ndj';
@@ -36,6 +35,7 @@ UPDATE hathi_input_file SET marc_profile = '/htapps/mwarin.babel/gdweb_script/da
 UPDATE hathi_input_file SET marc_profile = '/htapps/mwarin.babel/gdweb_script/data/marc_profiles/uic.tsv' WHERE id = '40' AND file_path = '/htdata/govdocs/MARC/extracted_json_fixed/uic.ndj';
 UPDATE hathi_input_file SET marc_profile = '/htapps/mwarin.babel/gdweb_script/data/marc_profiles/uiowa.tsv' WHERE id = '24' AND file_path = '/htdata/govdocs/MARC/extracted_json_fixed/uiowa.ndj';
 UPDATE hathi_input_file SET marc_profile = '/htapps/mwarin.babel/gdweb_script/data/marc_profiles/uky.tsv' WHERE id = '50' AND file_path = '/htdata/govdocs/MARC/extracted_json_fixed/uky.ndj';
+UPDATE hathi_input_file SET marc_profile = '/htapps/mwarin.babel/gdweb_script/data/marc_profiles/umd.tsv' WHERE id = '26' AND file_path = '/htdata/govdocs/MARC/extracted_json_fixed/MdU-20140131-1256.xml.ndj';
 UPDATE hathi_input_file SET marc_profile = '/htapps/mwarin.babel/gdweb_script/data/marc_profiles/uncg.tsv' WHERE id = '29' AND file_path = '/htdata/govdocs/MARC/extracted_json_fixed/uncg.ndj';
 UPDATE hathi_input_file SET marc_profile = '/htapps/mwarin.babel/gdweb_script/data/marc_profiles/usu.tsv' WHERE id = '44' AND file_path = '/htdata/govdocs/MARC/extracted_json_fixed/usu.ndj';
 UPDATE hathi_input_file SET marc_profile = '/htapps/mwarin.babel/gdweb_script/data/marc_profiles/virginia.tsv' WHERE id = '37' AND file_path = '/htdata/govdocs/MARC/extracted_json_fixed/virginia.ndj';
