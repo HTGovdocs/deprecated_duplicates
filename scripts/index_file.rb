@@ -139,10 +139,12 @@ def run (hdin)
     end
 
     if !line_hash['item_id'].nil? then
-      item_id = line_hash['item_id'].values.first;
-      if item_id.size > 50 then
-        # Make sure we fit in the column.
-        item_id = item_id[0..49];
+      if line_hash['item_id'].first.class == {}.class then
+        item_id = line_hash['item_id'].first.values.first;
+        if item_id.size > 50 then
+          # Make sure we fit in the column.
+          item_id = item_id[0..49];
+        end
       end
     end
 
@@ -173,7 +175,7 @@ def run (hdin)
   @loadfiles.keys.each do |suffix|
     loadfile = @loadfiles[suffix];
     loadfile.close();
-    sql = "LOAD DATA LOCAL INFILE ? INTO TABLE hathi_#{suffix} (gd_id, str_id, marc_field)";
+    sql = "LOAD DATA LOCAL INFILE ? REPLACE INTO TABLE hathi_#{suffix} (gd_id, str_id, marc_field)";
     puts sql;
     query = @conn.prepare(sql);
     query.execute(loadfile.path);
@@ -191,8 +193,7 @@ def insert_line (json, gd_id)
   # Get the oclc value, look up a str_id for it and write to oclc load file together with the gd_id and marc_field.
   json['oclc'].each do |oclc|
     marc_field = oclc.keys.first;
-    val        = HTPH::Hathinormalize.oclc(oclc[marc_field]);
-    next if val.nil?;
+    val        = oclc[marc_field].to_s;
     next if val.empty?;
     str_id     = get_str_id(val);
     @loadfiles['oclc'].file.puts("#{gd_id}\t#{str_id}\t#{marc_field}");
@@ -201,7 +202,7 @@ def insert_line (json, gd_id)
   # Get the sudoc value, look up a str_id for it and write to sudoc load file together with the gd_id and marc_field.
   json['sudoc'].each do |sudoc|
     marc_field = sudoc.keys.first;
-    val        = HTPH::Hathinormalize.sudoc(sudoc[marc_field]);
+    val        = HTPH::Hathinormalize.sudoc(sudoc[marc_field].to_s);
     next if val.nil?;
     next if val.empty?;
     str_id     = get_str_id(val);
@@ -211,8 +212,7 @@ def insert_line (json, gd_id)
   # ... and so on for isbn, issn, lccn, title, enumc, pubdate and publisher.
   json['isbn'].each do |isbn|
     marc_field = isbn.keys.first;
-    val        = isbn[marc_field];
-    next if val.nil?;
+    val        = isbn[marc_field].to_s;
     next if val.empty?;
     str_id     = get_str_id(val);
     @loadfiles['isbn'].file.puts("#{gd_id}\t#{str_id}\t#{marc_field}");
@@ -220,14 +220,9 @@ def insert_line (json, gd_id)
 
   json['issn'].each do |issn|
     marc_field = issn.keys.first;
-    val        = issn[marc_field];
-    next if val.nil?;
+    val        = issn[marc_field].to_s;
     next if val.empty?;
-    next if val == '1';
-
-    # Sometimes an issn is catalogued as "0149-2195 (Print)",
-    # so remove all parentheticals.
-    val.gsub!(/ \(.+?\)/, '')
+    next if val == '1'; # Common crud. Perhaps no longer.
 
     str_id = get_str_id(val);
     @loadfiles['issn'].file.puts("#{gd_id}\t#{str_id}\t#{marc_field}");
@@ -235,12 +230,8 @@ def insert_line (json, gd_id)
 
   json['lccn'].each do |lccn|
     marc_field = lccn.keys.first;
-    val        = lccn[marc_field]
-    next if val.nil?;
-    val.tr_s!(' ', '');
-    val.tr_s!('^', '');
+    val        = lccn[marc_field].to_s;
     next if val.empty?;
-    val.upcase!;
     str_id     = get_str_id(val);
     @loadfiles['lccn'].file.puts("#{gd_id}\t#{str_id}\t#{marc_field}");
   end
@@ -255,8 +246,8 @@ def insert_line (json, gd_id)
   end
 
   json['enumc'].each do |enumc|
-    marc_field = enumc[0];
-    val        = HTPH::Hathinormalize.enumc(enumc[1]);
+    marc_field = enumc.keys.first;
+    val        = HTPH::Hathinormalize.enumc(enumc[marc_field]);
     next if val.nil?;
     next if val.empty?;
     str_id = get_str_id(val);

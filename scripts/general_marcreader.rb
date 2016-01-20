@@ -147,15 +147,15 @@ class HathiMarcReader
 
         # Output with holdings, if any.
         if out.has_key?('item_id') && out.has_key?('enumc') then
-          # Once per pair of item_id & enumc
+          # Output once per item_id-enumc pair.
           item_ids = out.delete('item_id');
           enumcs   = out.delete('enumc');
-          item_ids.zip(enumcs).each do |item_id,enumc|
-            if !enumc.nil? then
-              out['item_id'] = item_id;
-              out['enumc']   = enumc;
-              puts out.to_json;
-            end
+          while enumcs.size > 0 do
+            enumc   = enumcs.shift;
+            item_id = item_ids.shift || nil;
+            out['item_id'] = [item_id];
+            out['enumc']   = [enumc];
+            puts out.to_json;
           end
         else
           # Or just output if no holdings.
@@ -169,7 +169,7 @@ class HathiMarcReader
   # Takes a MARC::Record and tag like 500x
   # returns array of all values for the tag found in the record.
   def get_from_marc (rec, tag)
-    raise "Bad input <#{tag}>" if tag !~ /^\d{3}[a-z]?$/;
+    raise "Bad input <#{tag}>" if tag !~ /^\d{3}[0-9a-z]?$/;
     # Split tag into field and subfield.
     # if tag="500"  then field="500", subfield="".
     # if tag="500x" then field="500", subfield="x".
