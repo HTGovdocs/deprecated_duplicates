@@ -208,9 +208,9 @@ def get_related (ids, skip, related)
       # The biggest key is the thing that most docs have in common.
       # Separate the set of ids into: 
       # * one set of ids that all have the biggest thing in common (biggest_key_ids)
-      # * one set of ids that DONT have the biggest thing in common (reaining_ids)
+      # * one set of ids that DONT have the biggest thing in common (remaining_ids)
       biggest_key_ids = attr_val_docs[biggest_key_attr][biggest_key_val].keys;
-      reaining_ids    = ids - biggest_key_ids;
+      remaining_ids    = ids - biggest_key_ids;
       # Save this set of ids as an array in the related array if you can't find anything more related in them...
       (related << biggest_key_ids) if (get_related(biggest_key_ids, (skip << biggest_key_attr), related) == nil);
       if remaining_ids.size > 1 then
