@@ -97,9 +97,17 @@ class HathiMarcReader
 
       # If there is better data outside the marc record, use that instead.
       if self.class.to_s == 'MongoReader' then
+        # isbn
+        if record.has_key?('isbns_normalized') && record['isbns_normalized'].size > 0 then
+          @@logger.d("Overwriting isbn with #{record['isbns_normalized'].join(', ')}");
+          out['isbn'] = [];
+          record['isbns_normalized'].each do |isbn|
+            out['isbn'] << {'999x' => isbn}; 
+          end
+        end
         # issn
         if record.has_key?('issn_normalized') && record['issn_normalized'].size > 0 then
-          @@logger.d("Overwriting issn #{out['issn'].join(', ')} with #{record['issn_normalized'].join(', ')}");
+          @@logger.d("Overwriting issn with #{record['issn_normalized'].join(', ')}");
           out['issn'] = [];
           record['issn_normalized'].each do |issn|
             out['issn'] << {'999x' => issn}; 
@@ -107,7 +115,7 @@ class HathiMarcReader
         end
         # lccn
         if record.has_key?('lccn_normalized') && record['lccn_normalized'].size > 0 then
-          @@logger.d("Overwriting lccn #{out['lccn'].join(', ')} with #{record['lccn_normalized'].join(', ')}");
+          @@logger.d("Overwriting lccn with #{record['lccn_normalized'].join(', ')}");
           out['lccn'] = [];
           record['lccn_normalized'].each do |lccn|
             out['lccn'] << {'999x' => lccn}; 
@@ -115,10 +123,18 @@ class HathiMarcReader
         end
         # oclc
         if record.has_key?('oclc_resolved') && record['oclc_resolved'].size > 0 then
-          @@logger.d("Overwriting oclc #{out['oclc'].join(', ')} with #{record['oclc_resolved'].join(', ')}");
+          @@logger.d("Overwriting oclc with #{record['oclc_resolved'].join(', ')}");
           out['oclc'] = [];
           record['oclc_resolved'].each do |oclc|
             out['oclc'] << {'999x' => oclc}; 
+          end
+        end
+        # sudocs
+        if record.has_key?('sudocs') && record['sudocs'].size > 0 then
+          @@logger.d("Overwriting sudocs with #{record['sudocs'].join(', ')}");
+          out['sudoc'] = [];
+          record['sudocs'].each do |sudoc|
+            out['sudoc'] << {'999x' => sudoc}; 
           end
         end
       end
