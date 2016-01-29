@@ -24,7 +24,7 @@ fi
 
 # Read data from mongo into file that can be read into mysql.
 echo '' > $DATADIR/test_mongo_output.ndj;
-head -3 $DATADIR/distinct_mongo_file_path.txt | sort | while read file_path
+cat $DATADIR/distinct_mongo_file_path.txt | sort | while read file_path
 do :
     marc_profile=`grep $file_path $SCRIPTPATH/../sql/marc_profiles_for_input_files.sql | grep -Po '[A-Za-z._/]+\.tsv'`;
     echo "Read $file_path from mongo using marc profile $marc_profile ...";
