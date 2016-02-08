@@ -8,7 +8,8 @@ require 'json';
 
 @str_mem      = {};
 @max_str_mem  = 10000;
-@max_str_len  = 749;
+@max_str_len  = 750;
+@max_record_id_len = 50;
 @str_mem_hit  = 0;
 @str_mem_miss = 0;
 @sha_digester = nil;
@@ -136,6 +137,12 @@ def run (hdin)
     rec_id    = 'N/A';
     if !line_hash['record_id'].nil? then
       rec_id  = line_hash['record_id'].first.values.first;
+
+      if rec_id.length > @max_record_id_len then
+        rec_id = rec_id[0..(@max_record_id_len-1)];
+      end
+
+
     end
 
     if !line_hash['item_id'].nil? then
@@ -287,7 +294,7 @@ def get_str_id (str)
   str = str.gsub(/ +/, ' ');
   str = str.sub(/^ /, '');
   str = str.sub(/ $/, '');
-  str = str[0..@max_str_len];
+  str = str[0..(@max_str_len-1)];
 
   if str == '' then
     return str_id;
