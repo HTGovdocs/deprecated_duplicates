@@ -98,35 +98,35 @@ class HathiMarcReader
       # If there is better data outside the marc record, use that instead.
       if self.class.to_s == 'MongoReader' then
         # isbn
-        if record.has_key?('isbns_normalized') && record['isbns_normalized'].size > 0 then
+        if record.has_key?('isbns_normalized') then
           out['isbn'] = [];
           record['isbns_normalized'].each do |isbn|
             out['isbn'] << {'999x' => isbn}; 
           end
         end
         # issn
-        if record.has_key?('issn_normalized') && record['issn_normalized'].size > 0 then
+        if record.has_key?('issn_normalized') then
           out['issn'] = [];
           record['issn_normalized'].each do |issn|
             out['issn'] << {'999x' => issn}; 
           end
         end
         # lccn
-        if record.has_key?('lccn_normalized') && record['lccn_normalized'].size > 0 then
+        if record.has_key?('lccn_normalized') then
           out['lccn'] = [];
           record['lccn_normalized'].each do |lccn|
             out['lccn'] << {'999x' => lccn}; 
           end
         end
         # oclc
-        if record.has_key?('oclc_resolved') && record['oclc_resolved'].size > 0 then
+        if record.has_key?('oclc_resolved') then
           out['oclc'] = [];
           record['oclc_resolved'].each do |oclc|
             out['oclc'] << {'999x' => oclc}; 
           end
         end
         # sudocs
-        if record.has_key?('sudocs') && record['sudocs'].size > 0 then
+        if record.has_key?('sudocs') then
           out['sudoc'] = [];
           record['sudocs'].each do |sudoc|
             out['sudoc'] << {'999x' => sudoc}; 
@@ -145,7 +145,7 @@ class HathiMarcReader
             out[label] = out[label].map do |h|
               k = h.keys.first;
               begin
-                {k => @@text_filter.transliterate(h[k]).gsub(/\p{Punct}/, '')}
+                {k => @@text_filter.transliterate(h[k]).gsub(/\p{Punct}+/, ' ')}
               rescue Exception => e
                 @@logger.f(e.message);
                 @@logger.f(e.backtrace.inspect);
