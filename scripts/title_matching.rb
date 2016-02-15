@@ -22,6 +22,14 @@ if !t_flag.empty? then
   $thread_count = Integer($1);
 end
 
+# If you want to keep the word freqs.
+$keep_freqs = false;
+k_flag = ARGV.select{|arg| arg =~ /^-k$/}
+if !k_flag.empty? then
+  ARGV.delete(k_flag[0]);
+  $keep_freqs = true;
+end
+
 # Only bother analyzing document pairs that have at least overlap_min_size words in common.
 overlap_min_size = 5;
 
@@ -41,11 +49,17 @@ categories  = %w[publisher title pubdate enumc];
 cat_queries = {};
 word_freqs  = {};
 word_2_id   = {};
-stop_words  = %w[
-  A ADMINISTRATION AN AND ARMY AS BUREAU BY COMMISSION DEPARTMENT DEPT FEDERAL FOR GEOLOGICAL
-  IN OF OFFICE ON PRINT PROGRAM PRT QUADRANGLE REPORT S SERVICE SERVICES SN SOIL STATES SURVEY
-  THE TO UNITED U US
-];
+stop_words  = [];
+
+# title_matching_stop_words.txt
+stop_words_f = HTPH::Hathidata::Data.new('title_matching_stop_words.txt');
+if stop_words_f.exists? then
+  stop_words_f.open('r').file.each_line do |line|
+    line.strip!;
+    stop_words << line;
+  end
+  stop_words_f.close();
+end
 
 # Get the string value of XXX (each of categories) given a gd_id.
 cat_sql_template = %w<
@@ -93,9 +107,20 @@ hdin.close();
 conn.close();
 
 tot_freq = 0.0;
-word_freqs.values.each do |freq|
-  tot_freq += freq;
+if $keep_freqs then
+  hdout = HTPH::Hathidata::Data.new('title_matching_word_freqs.tsv').open('w');
+  word_freqs.sort_by{|word, freq| freq}.reverse.each do |word, freq|
+    freq = word_freqs[word];
+    hdout.file.puts "#{word}\t#{freq}";
+    tot_freq += freq;
+  end
+  hdout.close();
+else
+  word_freqs.values.each do |freq|
+    tot_freq += freq;
+  end
 end
+
 
 # Inverse word/doc freq (because a word only occurs 0 or 1 times per doc, so word freq and doc freq are the same)
 # would be 1 - (word_freq.to_f / tot_freq)
