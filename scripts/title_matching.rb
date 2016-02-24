@@ -51,7 +51,7 @@ word_freqs  = {};
 word_2_id   = {};
 stop_words  = [];
 
-# title_matching_stop_words.txt
+# Read stop words from file.
 stop_words_f = HTPH::Hathidata::Data.new('title_matching_stop_words.txt');
 if stop_words_f.exists? then
   stop_words_f.open('r').file.each_line do |line|
@@ -120,7 +120,6 @@ else
     tot_freq += freq;
   end
 end
-
 
 # Inverse word/doc freq (because a word only occurs 0 or 1 times per doc, so word freq and doc freq are the same)
 # would be 1 - (word_freq.to_f / tot_freq)
