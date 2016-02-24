@@ -1,5 +1,6 @@
 require 'htph';
 require 'set';
+require 'lib/score';
 
 # Deal with the ones deemed too heavy for analyze_cluster, which it will have put in a "huge_$ymd.tsv" file.
 # Get those clusters into one id per line and pass the resulting file to this script.
@@ -197,7 +198,7 @@ def run
         # get outputted as duplicate clusters.
         if enumc_id_map[enumc].size > 1 then
           subclusters = true;
-          s           = score(enumc_id_map[enumc]);
+          s           = Score.cluster(enumc_id_map[enumc], @doc_attr_vals);
           dup_ids_out = enumc_id_map[enumc].sort.join(',');
           puts "duplicates*\t#{s}\t#{dup_ids_out}";
         end
@@ -209,32 +210,9 @@ def run
         rel = "unclear";
       end
     end
-    puts "#{rel}\t#{score(ids_clone)}\t#{ids_clone.join(',')}";
+    puts "#{rel}\t#{Score.cluster(ids_clone, @doc_attr_vals)}\t#{ids_clone.join(',')}";
   end
   @log.d("Done");
-end
-
-# Copied from analyze_cluster. They should be the same.
-def score (ids)
-  count_vals = {};
-  ids.each do |doc|
-    @doc_attr_vals[doc].keys.each do |attr|
-      val = @doc_attr_vals[doc][attr];
-      count_vals[val] ||= 0;
-      count_vals[val]  += 1;
-    end
-  end
-  val_counts = count_vals.values;
-  sum_vals   = val_counts.inject(:+).to_f;
-  tot        = 0.0;
-
-  val_counts.each do |vc|
-    score = 1 - ((ids.size - vc) / sum_vals);
-    tot += score;
-  end
-
-  # puts "(#{tot} / #{val_counts.size}) ** 3";
-  return (tot / val_counts.size) ** 3;
 end
 
 run if __FILE__ == $0;
