@@ -22,10 +22,11 @@ db         = HTPH::Hathidb::Db.new();
 };
 
 # First query is always this.
-@main_sql          = "SELECT DISTINCT hx.gd_id FROM table_x AS hx JOIN hathi_str AS hs ON (hx.str_id = hs.id) AND hs.str = ? ";
-@prep_query_cache  = {};
-@str_cache_hash    = {};
-@str_cache_max     = 5000;
+@main_sql         = "SELECT DISTINCT hx.gd_id FROM table_x AS hx JOIN hathi_str AS hs ON (hx.str_id = hs.id) AND hs.str = ? ";
+@prep_query_cache = {};
+@str_cache_hash   = {};
+@str_cache_max    = 5000;
+@filter           = [];
 
 def get_table (suffix)
   if @table_suffix.has_key?(suffix) then
@@ -36,7 +37,8 @@ end
 
 def read_input
   # Terminate statement with ; or empty line. One WHERE X AND-clause per line.
-  input = [];
+  input  = [];
+  @filter = [];
   while true do
     print ">> ";
     str = gets;
@@ -47,6 +49,8 @@ def read_input
       str.gsub!(';', '');
       input << str;
       return run_query(input);
+    elsif str.match(/!(\w+)/) then
+      @filter << $1;
     else
       input << str;
     end
@@ -130,6 +134,9 @@ end
 def format_record (id)
   record = {'id' => id};
   @table_suffix.keys.each do |attr|
+    if !@filter.empty? && !@filter.include?(attr) then
+      next;
+    end
     q = prep_cache("SELECT str_id FROM #{get_table(attr)} WHERE gd_id = ?");
     record[attr] = [];
     q.enumerate(id) do |row|
