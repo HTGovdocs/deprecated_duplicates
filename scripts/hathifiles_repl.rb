@@ -32,7 +32,7 @@ def get_table (suffix)
   if @table_suffix.has_key?(suffix) then
     return "hathi_#{suffix}";
   end
-  raise "What the hell kind of table is hathi_#{suffix} ??";
+  raise "hathi_#{suffix} is not a supported table. Choose from #{@table_suffix.keys.sort.join(', ')}";
 end
 
 def read_input
