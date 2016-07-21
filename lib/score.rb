@@ -10,8 +10,8 @@ class Score
   
   def Score.cluster (ids, doc_attr_vals)
     # Assume in this example that:
-    #   * ids is an array with 3 ids: [22,33,44]
-    #   * doc_attr_vals is a 2D hash with ids values for keys:
+    #   * ids is an array with 3 record ids: [22,33,44]
+    #   * doc_attr_vals is a 2D hash with record ids for keys:
     #   {
     #    22 => {:oclc => '555', :publisher => 'congress'},
     #    33 => {:oclc => '555', :publisher => 'congress'},
